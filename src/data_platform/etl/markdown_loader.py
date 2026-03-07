@@ -44,6 +44,9 @@ from data_platform.etl.transformers import (
     RawDocument,
 )
 from data_platform.knowledge_base.reader import KnowledgeBaseReader, ParsedDocument
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class MarkdownETLPipeline(ETLPipeline):
@@ -87,7 +90,11 @@ class MarkdownETLPipeline(ETLPipeline):
 
     def extract(self) -> list[ParsedDocument]:
         """Walk the KB directories and return all parsed documents."""
-        return self._reader.read_all(object_type=self._object_type)
+        filter_msg = f" (type={self._object_type!r})" if self._object_type else ""
+        logger.debug("MarkdownETLPipeline extracting from %s%s", self._reader.root, filter_msg)
+        docs = self._reader.read_all(object_type=self._object_type)
+        logger.debug("MarkdownETLPipeline extracted %d document(s)", len(docs))
+        return docs
 
     def transform(
         self, raw_records: list[ParsedDocument]
@@ -99,13 +106,18 @@ class MarkdownETLPipeline(ETLPipeline):
         for doc in raw_records:
             transformer = self._TRANSFORMERS.get(doc.object_type)
             if transformer is None:
-                all_errors.append((str(doc.path), f"Unknown object type: {doc.object_type!r}"))
+                msg = f"Unknown object type: {doc.object_type!r}"
+                logger.warning("MarkdownETLPipeline: %s for file %s", msg, doc.path)
+                all_errors.append((str(doc.path), msg))
                 continue
             raw = RawDocument.from_parsed(doc)
             try:
                 obj = transformer.transform(raw)
                 all_objects.append(obj)
             except Exception as exc:
+                logger.warning(
+                    "MarkdownETLPipeline transform error for %s: %s", doc.path, exc
+                )
                 all_errors.append((str(doc.path), str(exc)))
 
         return all_objects, all_errors

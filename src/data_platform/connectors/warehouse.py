@@ -17,6 +17,9 @@ from typing import Any
 
 from data_platform.config import WarehouseConfig
 from data_platform.connectors.base import BaseConnector
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class WarehouseConnector(BaseConnector):
@@ -44,13 +47,17 @@ class WarehouseConnector(BaseConnector):
         """Initialise the warehouse engine based on the configured type."""
         wtype = self._config.type.lower()
         if wtype == "none":
+            logger.debug("Warehouse type is 'none'; skipping connection")
             return  # no-op
+        logger.info("Connecting to warehouse (type=%s)", wtype)
         url = self._build_url(wtype)
         try:
             from sqlalchemy import create_engine  # noqa: PLC0415
 
             self._engine = create_engine(url)
+            logger.debug("Warehouse engine created (type=%s)", wtype)
         except ImportError as exc:
+            logger.error("Missing SQLAlchemy dialect for warehouse type '%s'", wtype)
             raise ImportError(
                 f"Missing SQLAlchemy dialect for warehouse type '{wtype}'. "
                 f"Install the required package (e.g. sqlalchemy-bigquery)."
@@ -58,8 +65,10 @@ class WarehouseConnector(BaseConnector):
 
     def disconnect(self) -> None:
         if self._engine is not None:
+            logger.info("Disconnecting from warehouse (type=%s)", self._config.type)
             self._engine.dispose()
             self._engine = None
+            logger.debug("Warehouse engine disposed")
 
     def is_connected(self) -> bool:
         return self._engine is not None
@@ -68,13 +77,18 @@ class WarehouseConnector(BaseConnector):
         """Execute a query against the warehouse and return rows as dicts."""
         if not self.is_connected():
             raise RuntimeError("Warehouse not connected. Call connect() first.")
+        stripped_query = query.strip()
+        truncated = stripped_query[:120].replace("\n", " ")
+        logger.debug("Executing warehouse query: %s%s", truncated, "…" if len(stripped_query) > 120 else "")
         from sqlalchemy import text  # noqa: PLC0415
 
         with self._engine.connect() as conn:
             result = conn.execute(text(query), params or {})
             if result.returns_rows:
                 keys = list(result.keys())
-                return [dict(zip(keys, row)) for row in result.fetchall()]
+                rows = [dict(zip(keys, row)) for row in result.fetchall()]
+                logger.debug("Warehouse query returned %d row(s)", len(rows))
+                return rows
             return []
 
     # ------------------------------------------------------------------

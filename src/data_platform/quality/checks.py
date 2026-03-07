@@ -25,6 +25,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Result / Report containers
@@ -248,7 +252,31 @@ def run_checks(
     DataQualityReport
         Aggregated report with results from every check.
     """
+    logger.info(
+        "Running %d data quality check(s) against %d record(s)",
+        len(checks),
+        len(records),
+    )
     report = DataQualityReport()
     for check in checks:
-        report.results.append(check.run(records))
+        result = check.run(records)
+        report.results.append(result)
+        if result.passed:
+            logger.debug("Check '%s': PASS", check.name)
+        else:
+            logger.warning(
+                "Check '%s': FAIL – %d violation(s)",
+                check.name,
+                len(result.violations),
+            )
+            for violation in result.violations:
+                logger.debug("  violation: %s", violation)
+
+    status = "PASS" if report.passed else "FAIL"
+    logger.info(
+        "Data quality run complete: %s – %d check(s), %d total violation(s)",
+        status,
+        len(report.results),
+        report.total_violations,
+    )
     return report

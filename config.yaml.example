@@ -12,6 +12,18 @@
 knowledge_base:
   path: /path/to/your/knowledge-base
 
+# Logging configuration.
+# configure_logging() is called automatically when get_config() is invoked.
+logging:
+  # Minimum log level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+  level: INFO
+  # Set to true to emit each record as a single-line JSON object (for log
+  # aggregation pipelines such as Datadog, Splunk, or Cloud Logging).
+  json_logs: false
+  # Optional path to a log file written in addition to stdout.
+  # Leave as null (or remove the key) to log to stdout only.
+  log_file: null
+
 # Primary relational database used by the repository layer.
 # Supports any SQLAlchemy-compatible connection string.
 database:

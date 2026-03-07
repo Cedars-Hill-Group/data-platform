@@ -24,6 +24,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class LineageRecord:
@@ -119,6 +123,14 @@ class LineageTracker:
             metadata=dict(metadata),
         )
         self._records.append(rec)
+        logger.debug(
+            "Lineage recorded: object_id=%s type=%s pipeline=%s operation=%s source=%s",
+            object_id,
+            object_type,
+            pipeline,
+            operation,
+            source,
+        )
         return rec
 
     def get_history(self, object_id: str) -> list[LineageRecord]:
@@ -168,6 +180,12 @@ class LineageTracker:
             obj_id = getattr(obj, "id", str(id(obj)))
             obj_type = type(obj).__name__.lower()
             records.append(self.record(obj_id, obj_type, source, pipeline, operation))
+        logger.info(
+            "Lineage batch recorded: %d record(s) for pipeline=%s operation=%s",
+            len(records),
+            pipeline,
+            operation,
+        )
         return records
 
     def summary(self) -> dict[str, Any]:

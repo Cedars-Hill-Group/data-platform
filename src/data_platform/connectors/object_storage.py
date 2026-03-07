@@ -18,6 +18,9 @@ from typing import Any
 
 from data_platform.config import ObjectStorageConfig
 from data_platform.connectors.base import BaseConnector
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class ObjectStorageConnector(BaseConnector):
@@ -40,19 +43,24 @@ class ObjectStorageConnector(BaseConnector):
 
     def connect(self) -> None:
         stype = self._config.type.lower()
+        logger.info("Connecting to object storage (type=%s)", stype)
         if stype == "s3":
             try:
                 import boto3  # noqa: PLC0415
 
                 self._client = boto3.client("s3", region_name=self._config.region)
+                logger.debug("S3 client created (region=%s)", self._config.region)
             except ImportError as exc:
+                logger.error("boto3 not installed; S3 storage unavailable")
                 raise ImportError("boto3 is required for S3 storage. Install it with: pip install boto3") from exc
         elif stype == "gcs":
             try:
                 from google.cloud import storage  # noqa: PLC0415
 
                 self._client = storage.Client()
+                logger.debug("GCS client created")
             except ImportError as exc:
+                logger.error("google-cloud-storage not installed; GCS storage unavailable")
                 raise ImportError(
                     "google-cloud-storage is required for GCS. "
                     "Install it with: pip install google-cloud-storage"
@@ -63,18 +71,23 @@ class ObjectStorageConnector(BaseConnector):
 
                 conn_str = self._config.metadata.get("connection_string", "")  # type: ignore[attr-defined]
                 self._client = BlobServiceClient.from_connection_string(conn_str)
+                logger.debug("Azure Blob Storage client created")
             except ImportError as exc:
+                logger.error("azure-storage-blob not installed; Azure storage unavailable")
                 raise ImportError(
                     "azure-storage-blob is required for Azure. "
                     "Install it with: pip install azure-storage-blob"
                 ) from exc
         elif stype in ("local", "none"):
             self._client = None
+            logger.debug("Object storage backend '%s' requires no external client", stype)
         else:
             raise ValueError(f"Unsupported object storage type: '{stype}'.")
         self._connected = True
+        logger.debug("Object storage connected (type=%s)", stype)
 
     def disconnect(self) -> None:
+        logger.info("Disconnecting from object storage (type=%s)", self._config.type)
         self._client = None
         self._connected = False
 
@@ -103,6 +116,7 @@ class ObjectStorageConnector(BaseConnector):
             raise RuntimeError("Not connected.")
         stype = self._config.type.lower()
         full_key = self._full_key(remote_key)
+        logger.debug("Uploading %s → %s (backend=%s)", local_path, full_key, stype)
 
         if stype == "s3":
             self._client.upload_file(str(local_path), self._config.bucket, full_key)
@@ -114,6 +128,8 @@ class ObjectStorageConnector(BaseConnector):
             dest = self._local_root / full_key
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(local_path, dest)
+
+        logger.info("Uploaded %s → %s", local_path.name, full_key)
 
     def download(self, remote_key: str, local_path: Path) -> None:
         """Download an object from storage to a local file.
@@ -129,6 +145,7 @@ class ObjectStorageConnector(BaseConnector):
             raise RuntimeError("Not connected.")
         stype = self._config.type.lower()
         full_key = self._full_key(remote_key)
+        logger.debug("Downloading %s → %s (backend=%s)", full_key, local_path, stype)
 
         local_path.parent.mkdir(parents=True, exist_ok=True)
         if stype == "s3":
@@ -141,6 +158,8 @@ class ObjectStorageConnector(BaseConnector):
             src = self._local_root / full_key
             shutil.copy2(src, local_path)
 
+        logger.info("Downloaded %s → %s", full_key, local_path.name)
+
     def list_objects(self, prefix: str = "") -> list[str]:
         """Return object keys under the optional *prefix*.
 
@@ -150,6 +169,7 @@ class ObjectStorageConnector(BaseConnector):
             raise RuntimeError("Not connected.")
         stype = self._config.type.lower()
         full_prefix = self._full_key(prefix)
+        logger.debug("Listing objects (backend=%s, prefix=%r)", stype, full_prefix)
 
         if stype == "s3":
             paginator = self._client.get_paginator("list_objects_v2")
@@ -157,18 +177,24 @@ class ObjectStorageConnector(BaseConnector):
             for page in paginator.paginate(Bucket=self._config.bucket, Prefix=full_prefix):
                 for obj in page.get("Contents", []):
                     keys.append(obj["Key"][len(self._config.prefix):])
+            logger.debug("Listed %d object(s) from S3", len(keys))
             return keys
         if stype == "gcs":
             bucket = self._client.bucket(self._config.bucket)
-            return [
+            keys = [
                 blob.name[len(self._config.prefix):]
                 for blob in bucket.list_blobs(prefix=full_prefix)
             ]
+            logger.debug("Listed %d object(s) from GCS", len(keys))
+            return keys
         if stype == "local":
             root = self._local_root / prefix
             if not root.exists():
+                logger.debug("Local storage root '%s' does not exist; returning empty list", root)
                 return []
-            return [str(p.relative_to(self._local_root)) for p in root.rglob("*") if p.is_file()]
+            keys = [str(p.relative_to(self._local_root)) for p in root.rglob("*") if p.is_file()]
+            logger.debug("Listed %d object(s) from local storage", len(keys))
+            return keys
         return []
 
     # ------------------------------------------------------------------

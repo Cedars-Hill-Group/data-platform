@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from data_platform.knowledge_base.reader import ParsedDocument
+from data_platform.log import get_logger
 from data_platform.ontology_adapter import Company, Person, Project
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -52,7 +55,7 @@ class PersonTransformer:
 
     def transform(self, raw: RawDocument) -> Person:
         d = raw.data
-        return Person(
+        person = Person(
             id=d.get("id") or str(uuid.uuid4()),
             name=d["name"],
             email=d.get("email"),
@@ -63,6 +66,8 @@ class PersonTransformer:
             metadata={k: v for k, v in d.items() if not k.startswith("_") and k not in _PERSON_KNOWN},
             source_file=raw.source,
         )
+        logger.debug("Transformed Person id=%s name=%r source=%s", person.id, person.name, raw.source)
+        return person
 
     def transform_many(
         self, raws: list[RawDocument]
@@ -74,7 +79,9 @@ class PersonTransformer:
             try:
                 results.append(self.transform(raw))
             except Exception as exc:
+                logger.warning("PersonTransformer failed for source=%r: %s", raw.source, exc)
                 errors.append((raw.source, str(exc)))
+        logger.debug("PersonTransformer.transform_many: %d ok, %d error(s)", len(results), len(errors))
         return results, errors
 
 
@@ -91,7 +98,7 @@ class CompanyTransformer:
 
     def transform(self, raw: RawDocument) -> Company:
         d = raw.data
-        return Company(
+        company = Company(
             id=d.get("id") or str(uuid.uuid4()),
             name=d["name"],
             industry=d.get("industry"),
@@ -102,6 +109,8 @@ class CompanyTransformer:
             metadata={k: v for k, v in d.items() if not k.startswith("_") and k not in _COMPANY_KNOWN},
             source_file=raw.source,
         )
+        logger.debug("Transformed Company id=%s name=%r source=%s", company.id, company.name, raw.source)
+        return company
 
     def transform_many(
         self, raws: list[RawDocument]
@@ -112,7 +121,9 @@ class CompanyTransformer:
             try:
                 results.append(self.transform(raw))
             except Exception as exc:
+                logger.warning("CompanyTransformer failed for source=%r: %s", raw.source, exc)
                 errors.append((raw.source, str(exc)))
+        logger.debug("CompanyTransformer.transform_many: %d ok, %d error(s)", len(results), len(errors))
         return results, errors
 
 
@@ -129,7 +140,7 @@ class ProjectTransformer:
 
     def transform(self, raw: RawDocument) -> Project:
         d = raw.data
-        return Project(
+        project = Project(
             id=d.get("id") or str(uuid.uuid4()),
             name=d["name"],
             description=d.get("description") or d.get("_body"),
@@ -140,6 +151,8 @@ class ProjectTransformer:
             metadata={k: v for k, v in d.items() if not k.startswith("_") and k not in _PROJECT_KNOWN},
             source_file=raw.source,
         )
+        logger.debug("Transformed Project id=%s name=%r source=%s", project.id, project.name, raw.source)
+        return project
 
     def transform_many(
         self, raws: list[RawDocument]
@@ -150,7 +163,9 @@ class ProjectTransformer:
             try:
                 results.append(self.transform(raw))
             except Exception as exc:
+                logger.warning("ProjectTransformer failed for source=%r: %s", raw.source, exc)
                 errors.append((raw.source, str(exc)))
+        logger.debug("ProjectTransformer.transform_many: %d ok, %d error(s)", len(results), len(errors))
         return results, errors
 
 

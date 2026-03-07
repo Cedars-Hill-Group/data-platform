@@ -21,6 +21,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
+from data_platform.log import configure_logging, get_logger
+
+_logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Sub-models
@@ -60,6 +64,26 @@ class ObjectStorageConfig(BaseModel):
     root_path: Path | None = None
 
 
+class LoggingConfig(BaseModel):
+    """Logging configuration for the data platform.
+
+    Maps to the optional ``logging:`` section in ``config.yaml``.
+    """
+
+    level: str = Field(
+        "INFO",
+        description="Minimum log level (DEBUG|INFO|WARNING|ERROR|CRITICAL).",
+    )
+    json_logs: bool = Field(
+        False,
+        description="Emit log records as single-line JSON when True.",
+    )
+    log_file: str | None = Field(
+        None,
+        description="Optional path to a log file (in addition to stdout).",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Root config model
 # ---------------------------------------------------------------------------
@@ -72,6 +96,7 @@ class DataPlatformConfig(BaseModel):
     object_storage: ObjectStorageConfig = Field(
         default_factory=lambda: ObjectStorageConfig(type="none")
     )
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -129,10 +154,31 @@ def get_config(config_path: str | None = None) -> DataPlatformConfig:
     else:
         path = _find_config_file()
 
+    _logger.debug("Loading configuration from %s", path)
+
     with path.open() as fh:
         raw = yaml.safe_load(fh)
 
-    return DataPlatformConfig.model_validate(raw)
+    config = DataPlatformConfig.model_validate(raw)
+
+    # Auto-configure logging from the loaded config so callers don't have to
+    # call configure_logging() manually.
+    configure_logging(
+        level=config.logging.level,
+        json_logs=config.logging.json_logs,
+        log_file=config.logging.log_file,
+    )
+
+    _logger.info(
+        "Configuration loaded from %s (db=%s, warehouse=%s, storage=%s, log_level=%s)",
+        path,
+        config.database.url.split("://")[0],   # log scheme only, not credentials
+        config.warehouse.type,
+        config.object_storage.type,
+        config.logging.level,
+    )
+
+    return config
 
 
 def reset_config_cache() -> None:

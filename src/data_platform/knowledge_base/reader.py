@@ -37,6 +37,10 @@ from typing import Any
 
 import frontmatter
 
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
+
 
 # Recognised sub-directory names mapped to canonical object type names.
 OBJECT_TYPE_DIRS: dict[str, str] = {
@@ -121,16 +125,20 @@ class KnowledgeBaseReader:
         """
         file_path = Path(file_path)
         if not file_path.exists():
+            logger.error("Markdown file not found: %s", file_path)
             raise FileNotFoundError(f"Markdown file not found: {file_path}")
 
         object_type = self._detect_object_type(file_path)
+        logger.debug("Reading %s file: %s", object_type, file_path.name)
         post = frontmatter.load(str(file_path))
-        return ParsedDocument(
+        doc = ParsedDocument(
             path=file_path,
             object_type=object_type,
             metadata=dict(post.metadata),
             content=post.content,
         )
+        logger.debug("Parsed %s: %d front-matter key(s)", file_path.name, len(doc.metadata))
+        return doc
 
     def read_all(self, object_type: str | None = None) -> list[ParsedDocument]:
         """Read all markdown files from the KB.
@@ -147,15 +155,19 @@ class KnowledgeBaseReader:
         list[ParsedDocument]
             One entry per ``.md`` file found.
         """
+        filter_msg = f" (type={object_type!r})" if object_type else ""
+        logger.info("Reading Knowledge Base from %s%s", self._root, filter_msg)
         docs: list[ParsedDocument] = []
         for dir_name, otype in OBJECT_TYPE_DIRS.items():
             if object_type and otype != object_type:
                 continue
             type_dir = self._root / dir_name
             if not type_dir.is_dir():
+                logger.debug("KB sub-directory not found, skipping: %s", type_dir)
                 continue
             for md_file in sorted(type_dir.glob("**/*.md")):
                 docs.append(self.read_file(md_file))
+        logger.info("Knowledge Base read complete: %d document(s) loaded", len(docs))
         return docs
 
     def list_files(self, object_type: str | None = None) -> list[Path]:

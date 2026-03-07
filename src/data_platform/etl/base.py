@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+
+from data_platform.log import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -99,16 +104,50 @@ class ETLPipeline(ABC):
 
     def run(self) -> ETLResult:
         """Execute extract → transform → load and return a summary result."""
+        logger.info("Pipeline '%s' starting", self.name)
         result = ETLResult(pipeline_name=self.name)
+        start = time.perf_counter()
 
+        logger.debug("[%s] Extract phase starting", self.name)
         raw_records = self.extract()
         result.records_extracted = len(raw_records)
+        logger.info("[%s] Extracted %d record(s)", self.name, result.records_extracted)
 
+        logger.debug("[%s] Transform phase starting", self.name)
         canonical_objects, errors = self.transform(raw_records)
         result.records_transformed = len(canonical_objects)
         result.errors.extend(errors)
+        if errors:
+            for source, msg in errors:
+                logger.warning("[%s] Transform error – source=%r: %s", self.name, source, msg)
+        logger.info(
+            "[%s] Transformed %d record(s) (%d error(s))",
+            self.name,
+            result.records_transformed,
+            len(errors),
+        )
 
+        logger.debug("[%s] Load phase starting", self.name)
         loaded = self.load(canonical_objects)
         result.records_loaded = loaded
+        logger.info("[%s] Loaded %d record(s)", self.name, result.records_loaded)
 
+        elapsed = time.perf_counter() - start
+        result.metadata["elapsed_seconds"] = round(elapsed, 4)
+        logger.info(
+            "Pipeline '%s' complete – extracted=%d transformed=%d loaded=%d errors=%d elapsed=%.3fs",
+            self.name,
+            result.records_extracted,
+            result.records_transformed,
+            result.records_loaded,
+            len(result.errors),
+            elapsed,
+        )
+        if result.has_errors:
+            logger.warning(
+                "Pipeline '%s' finished with %d error(s); success_rate=%.1f%%",
+                self.name,
+                len(result.errors),
+                result.success_rate * 100,
+            )
         return result

@@ -19,7 +19,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from data_platform.log import get_logger
 from data_platform.ontology_adapter import TemplateLibrary
+
+logger = get_logger(__name__)
 
 
 # Map canonical type name → sub-directory
@@ -99,12 +102,14 @@ class KnowledgeBaseWriter:
 
         dest_path = dest_dir / f"{filename}.md"
         if dest_path.exists() and not overwrite:
+            logger.warning("File already exists and overwrite=False: %s", dest_path)
             raise FileExistsError(
                 f"File already exists: {dest_path}. Pass overwrite=True to replace it."
             )
 
         content = self._templates.render(object_type, **fields)
         dest_path.write_text(content, encoding="utf-8")
+        logger.info("Created %s file: %s", object_type, dest_path)
         return dest_path
 
     def update(self, file_path: Path | str, **fields: Any) -> Path:
@@ -128,12 +133,14 @@ class KnowledgeBaseWriter:
 
         file_path = Path(file_path)
         if not file_path.exists():
+            logger.error("Cannot update – file not found: %s", file_path)
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Merge existing front-matter with supplied fields
         post = frontmatter.load(str(file_path))
         merged = dict(post.metadata)
         merged.update(fields)
+        logger.debug("Updating %s with %d field(s)", file_path.name, len(fields))
 
         # Determine object type from parent dir name
         parent_name = file_path.parent.name
@@ -147,6 +154,7 @@ class KnowledgeBaseWriter:
 
         content = self._templates.render(object_type, **merged)
         file_path.write_text(content, encoding="utf-8")
+        logger.info("Updated %s file: %s", object_type, file_path)
         return file_path
 
     # ------------------------------------------------------------------
