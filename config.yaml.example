@@ -1,0 +1,59 @@
+# Data Platform Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Copy this file to config.yaml (which is .gitignored) and fill in real values.
+# config.yaml is loaded at runtime via src/data_platform/config.py.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Path to the markdown Knowledge Base.
+# The KB must have sub-folders for each object type:
+#   <knowledge_base.path>/people/
+#   <knowledge_base.path>/companies/
+#   <knowledge_base.path>/projects/
+knowledge_base:
+  path: /path/to/your/knowledge-base
+
+# Logging configuration.
+# configure_logging() is called automatically when get_config() is invoked.
+logging:
+  # Minimum log level: DEBUG | INFO | WARNING | ERROR | CRITICAL
+  level: INFO
+  # Set to true to emit each record as a single-line JSON object (for log
+  # aggregation pipelines such as Datadog, Splunk, or Cloud Logging).
+  json_logs: false
+  # Optional path to a log file written in addition to stdout.
+  # Leave as null (or remove the key) to log to stdout only.
+  log_file: null
+
+# Primary relational database used by the repository layer.
+# Supports any SQLAlchemy-compatible connection string.
+database:
+  url: sqlite:///data_platform.db
+  # url: postgresql+psycopg2://user:password@host:5432/dbname
+  # url: mysql+pymysql://user:password@host:3306/dbname
+  echo: false          # set true to log all SQL statements
+  pool_size: 5
+  max_overflow: 10
+
+# Analytical / cloud data warehouse (optional).
+warehouse:
+  type: bigquery        # bigquery | snowflake | redshift | none
+  project: my-gcp-project
+  dataset: my_dataset
+  # Snowflake example:
+  # type: snowflake
+  # account: myorg-myaccount
+  # user: username
+  # password: password
+  # warehouse: COMPUTE_WH
+  # database: MY_DB
+  # schema: PUBLIC
+
+# Object / blob storage (optional).
+object_storage:
+  type: s3              # s3 | gcs | azure | local | none
+  bucket: my-bucket
+  prefix: data/
+  region: us-east-1
+  # For local filesystem backend:
+  # type: local
+  # root_path: /path/to/local/storage
