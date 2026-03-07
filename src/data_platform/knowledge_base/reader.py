@@ -94,10 +94,22 @@ class KnowledgeBaseReader:
     ----------
     root:
         Path to the KB root directory (from ``config.yaml``).
+    folder_map:
+        Optional mapping from canonical type name to sub-folder name,
+        e.g. ``{"person": "people", "company": "companies", "project": "projects"}``.
+        When *None*, the defaults from :data:`OBJECT_TYPE_DIRS` are used.
+        Pass ``config.knowledge_base.folder_map`` to use configured paths.
     """
 
-    def __init__(self, root: Path | str) -> None:
+    def __init__(self, root: Path | str, folder_map: dict[str, str] | None = None) -> None:
         self._root = Path(root)
+        if folder_map is not None:
+            # folder_map is type→dir; build both directions
+            self._type_to_dir: dict[str, str] = dict(folder_map)
+            self._dir_to_type: dict[str, str] = {v: k for k, v in folder_map.items()}
+        else:
+            self._type_to_dir = {v: k for k, v in OBJECT_TYPE_DIRS.items()}
+            self._dir_to_type = dict(OBJECT_TYPE_DIRS)
 
     @property
     def root(self) -> Path:
@@ -158,7 +170,7 @@ class KnowledgeBaseReader:
         filter_msg = f" (type={object_type!r})" if object_type else ""
         logger.info("Reading Knowledge Base from %s%s", self._root, filter_msg)
         docs: list[ParsedDocument] = []
-        for dir_name, otype in OBJECT_TYPE_DIRS.items():
+        for otype, dir_name in self._type_to_dir.items():
             if object_type and otype != object_type:
                 continue
             type_dir = self._root / dir_name
@@ -179,7 +191,7 @@ class KnowledgeBaseReader:
             When supplied, restrict to the sub-directory for that type.
         """
         paths: list[Path] = []
-        for dir_name, otype in OBJECT_TYPE_DIRS.items():
+        for otype, dir_name in self._type_to_dir.items():
             if object_type and otype != object_type:
                 continue
             type_dir = self._root / dir_name
@@ -199,9 +211,9 @@ class KnowledgeBaseReader:
         except ValueError:
             relative = file_path
         top_dir = relative.parts[0] if relative.parts else ""
-        if top_dir in OBJECT_TYPE_DIRS:
-            return OBJECT_TYPE_DIRS[top_dir]
+        if top_dir in self._dir_to_type:
+            return self._dir_to_type[top_dir]
         raise ValueError(
             f"Cannot determine object type for '{file_path}'. "
-            f"Expected file to be under one of: {sorted(OBJECT_TYPE_DIRS)}"
+            f"Expected file to be under one of: {sorted(self._dir_to_type)}"
         )

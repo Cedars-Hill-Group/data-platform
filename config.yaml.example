@@ -9,8 +9,13 @@
 #   <knowledge_base.path>/people/
 #   <knowledge_base.path>/companies/
 #   <knowledge_base.path>/projects/
+# The sub-folder names can be overridden using the *_folder keys below.
 knowledge_base:
   path: /path/to/your/knowledge-base
+  # Optional: override default sub-folder names.
+  # people_folder: people
+  # companies_folder: companies
+  # projects_folder: projects
 
 # Logging configuration.
 # configure_logging() is called automatically when get_config() is invoked.
