@@ -11,6 +11,14 @@
 #   <knowledge_base.path>/projects/
 knowledge_base:
   path: /path/to/your/knowledge-base
+  # Optional directory-name overrides if your KB uses non-default names.
+  companies_dir: companies
+  people_dir: people
+  projects_dir: projects
+
+# Output directory for generated artifacts such as properties.json.
+output:
+  path: output
 
 # Logging configuration.
 # configure_logging() is called automatically when get_config() is invoked.

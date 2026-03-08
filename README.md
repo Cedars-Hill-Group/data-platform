@@ -22,15 +22,7 @@ The data platform layer of the CHG Operating System provides data access, normal
 pip install -e ".[dev]"
 ```
 
-`ontology-core` is an internal CHG Operating System library. Install it separately once it's available:
-
-```bash
-pip install -e /path/to/ontology-core
-# or, if published internally:
-pip install ontology-core
-```
-
-Until then, the platform falls back automatically to stub model implementations.
+`ontology-core` is installed as a direct dependency from GitHub via `pyproject.toml`.
 
 ### 2. Configure
 
@@ -45,6 +37,9 @@ Minimum required fields:
 ```yaml
 knowledge_base:
   path: /absolute/path/to/your/knowledge-base
+
+output:
+    path: /absolute/or/relative/output
 ```
 
 Alternatively, set the `DATA_PLATFORM_CONFIG` environment variable to point at any YAML file.
@@ -109,6 +104,24 @@ pipeline = MarkdownETLPipeline(
 result = pipeline.run()
 print(result)
 # MarkdownETLPipeline: extracted=12, transformed=12, loaded=12, errors=0
+```
+
+### Generate `properties.json` from the Knowledge Base
+
+```python
+from data_platform.config import get_config
+from data_platform.knowledge_base import collect_property_catalog
+
+cfg = get_config()
+kb = cfg.knowledge_base
+
+catalog, saved = collect_property_catalog(
+    kb.path,
+    output_path=cfg.output.path / "properties.json",
+)
+
+print(saved)
+print(len(catalog.firm_type), len(catalog.focus))
 ```
 
 ### Create a new KB file from a template

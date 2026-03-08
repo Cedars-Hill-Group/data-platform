@@ -12,6 +12,7 @@ from data_platform.config import (
     DatabaseConfig,
     KnowledgeBaseConfig,
     ObjectStorageConfig,
+    OutputConfig,
     WarehouseConfig,
     get_config,
     reset_config_cache,
@@ -44,6 +45,10 @@ class TestConfigLoading:
     def test_object_storage_defaults(self, config_file: Path):
         cfg = get_config(str(config_file))
         assert cfg.object_storage.type == "none"
+
+    def test_output_defaults(self, config_file: Path):
+        cfg = get_config(str(config_file))
+        assert cfg.output.path == Path("output")
 
     def test_missing_config_raises(self, tmp_path: Path):
         with pytest.raises(FileNotFoundError):
@@ -83,6 +88,9 @@ class TestConfigModels:
     def test_knowledge_base_config(self, tmp_path: Path):
         kb = KnowledgeBaseConfig(path=tmp_path)
         assert kb.path == tmp_path
+        assert kb.companies_dir == "companies"
+        assert kb.people_dir == "people"
+        assert kb.projects_dir == "projects"
 
     def test_database_config_defaults(self):
         db = DatabaseConfig()
@@ -97,3 +105,7 @@ class TestConfigModels:
         os_cfg = ObjectStorageConfig(type="s3", bucket="my-bucket", prefix="data/")
         assert os_cfg.type == "s3"
         assert os_cfg.bucket == "my-bucket"
+
+    def test_output_config_defaults(self):
+        output = OutputConfig()
+        assert output.path == Path("output")

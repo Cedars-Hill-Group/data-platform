@@ -33,6 +33,16 @@ _logger = get_logger(__name__)
 
 class KnowledgeBaseConfig(BaseModel):
     path: Path = Field(..., description="Root directory of the markdown Knowledge Base.")
+    companies_dir: str = Field("companies", description="Sub-directory name for company files.")
+    people_dir: str = Field("people", description="Sub-directory name for person files.")
+    projects_dir: str = Field("projects", description="Sub-directory name for project files.")
+
+
+class OutputConfig(BaseModel):
+    path: Path = Field(
+        Path("output"),
+        description="Output directory for machine-readable artifacts (e.g. properties.json).",
+    )
 
 
 class DatabaseConfig(BaseModel):
@@ -91,6 +101,7 @@ class LoggingConfig(BaseModel):
 
 class DataPlatformConfig(BaseModel):
     knowledge_base: KnowledgeBaseConfig
+    output: OutputConfig = Field(default_factory=OutputConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     warehouse: WarehouseConfig = Field(default_factory=lambda: WarehouseConfig(type="none"))
     object_storage: ObjectStorageConfig = Field(

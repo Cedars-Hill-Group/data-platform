@@ -13,9 +13,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-frontmatter>=1.1",
     "sqlalchemy>=2.0",
-    # ontology-core is an internal CHG Operating System library.
-    # Install it separately: pip install -e /path/to/ontology-core
-    # or add it here as a git/path dependency once available.
+    "ontology-core @ git+https://github.com/rounder22/ontology-core.git",
 ]
 
 [project.optional-dependencies]
