@@ -33,6 +33,23 @@ _logger = get_logger(__name__)
 
 class KnowledgeBaseConfig(BaseModel):
     path: Path = Field(..., description="Root directory of the markdown Knowledge Base.")
+    people_folder: str = Field("people", description="Sub-folder name for person documents.")
+    companies_folder: str = Field("companies", description="Sub-folder name for company documents.")
+    projects_folder: str = Field("projects", description="Sub-folder name for project documents.")
+
+    @property
+    def folder_map(self) -> dict[str, str]:
+        """Return a mapping from canonical type name to folder name.
+
+        Example::
+
+            {"person": "people", "company": "companies", "project": "projects"}
+        """
+        return {
+            "person": self.people_folder,
+            "company": self.companies_folder,
+            "project": self.projects_folder,
+        }
     companies_dir: str = Field("companies", description="Sub-directory name for company files.")
     people_dir: str = Field("people", description="Sub-directory name for person files.")
     projects_dir: str = Field("projects", description="Sub-directory name for project files.")

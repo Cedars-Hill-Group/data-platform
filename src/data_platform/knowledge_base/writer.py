@@ -51,11 +51,22 @@ class KnowledgeBaseWriter:
         Path to the KB root directory.
     template_library:
         Template library instance to render new files.
+    folder_map:
+        Optional mapping from canonical type name to sub-folder name,
+        e.g. ``{"person": "people", "company": "companies", "project": "projects"}``.
+        When *None*, the defaults from :data:`_TYPE_TO_DIR` are used.
+        Pass ``config.knowledge_base.folder_map`` to use configured paths.
     """
 
-    def __init__(self, root: Path | str, template_library: TemplateLibrary | None = None) -> None:
+    def __init__(
+        self,
+        root: Path | str,
+        template_library: TemplateLibrary | None = None,
+        folder_map: dict[str, str] | None = None,
+    ) -> None:
         self._root = Path(root)
         self._templates = template_library or TemplateLibrary()
+        self._type_to_dir: dict[str, str] = dict(folder_map) if folder_map is not None else dict(_TYPE_TO_DIR)
 
     @property
     def root(self) -> Path:
@@ -144,7 +155,7 @@ class KnowledgeBaseWriter:
 
         # Determine object type from parent dir name
         parent_name = file_path.parent.name
-        reverse_map = {v: k for k, v in _TYPE_TO_DIR.items()}
+        reverse_map = {v: k for k, v in self._type_to_dir.items()}
         object_type = reverse_map.get(parent_name)
         if object_type is None:
             raise ValueError(
@@ -163,9 +174,9 @@ class KnowledgeBaseWriter:
 
     def _type_dir(self, object_type: str) -> str:
         key = object_type.lower()
-        if key not in _TYPE_TO_DIR:
+        if key not in self._type_to_dir:
             raise ValueError(
                 f"Unknown object type: '{object_type}'. "
-                f"Expected one of: {sorted(_TYPE_TO_DIR)}"
+                f"Expected one of: {sorted(self._type_to_dir)}"
             )
-        return _TYPE_TO_DIR[key]
+        return self._type_to_dir[key]
