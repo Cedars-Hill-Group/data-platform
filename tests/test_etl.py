@@ -76,20 +76,26 @@ class TestPersonTransformer:
         person = transformer.transform(self._raw(tags="python"))
         assert person.tags == ["python"]
 
-    def test_missing_name_raises(self):
+    def test_missing_name_falls_back_to_stem(self):
         transformer = PersonTransformer()
-        raw = RawDocument(data={}, source="bad.md", object_type="person")
-        with pytest.raises(KeyError):
-            transformer.transform(raw)
+        raw = RawDocument(data={}, source="people/alice-smith.md", object_type="person")
+        person = transformer.transform(raw)
+        assert person.name == "alice-smith"
+
+    def test_null_name_falls_back_to_stem(self):
+        transformer = PersonTransformer()
+        raw = RawDocument(data={"name": None}, source="people/bob-jones.md", object_type="person")
+        person = transformer.transform(raw)
+        assert person.name == "bob-jones"
 
     def test_transform_many_collects_errors(self):
         transformer = PersonTransformer()
         good = RawDocument(data={"name": "Alice"}, source="alice.md", object_type="person")
-        bad = RawDocument(data={}, source="bad.md", object_type="person")
+        # source=None causes Path(None) to raise TypeError, exercising error collection
+        bad = RawDocument(data={}, source=None, object_type="person")
         results, errors = transformer.transform_many([good, bad])
         assert len(results) == 1
         assert len(errors) == 1
-        assert "bad.md" in errors[0][0]
 
 
 class TestCompanyTransformer:
@@ -236,9 +242,9 @@ class TestMarkdownETLPipeline:
         result = pipeline.run()
         assert "MarkdownETLPipeline" in str(result)
 
-    def test_error_in_malformed_file(self, tmp_path: Path):
+    def test_missing_name_in_file_uses_stem(self, tmp_path: Path):
         (tmp_path / "people").mkdir()
-        # Missing required 'name' field
+        # 'name' absent from front-matter; pipeline should fall back to filename stem
         (tmp_path / "people" / "bad.md").write_text(
             textwrap.dedent(
                 """\
@@ -254,8 +260,9 @@ class TestMarkdownETLPipeline:
         loader = RepositoryLoader(people_repo=PeopleRepository())
         pipeline = MarkdownETLPipeline(reader=reader, loader=loader)
         result = pipeline.run()
-        assert result.has_errors
-        assert result.records_loaded == 0
+        assert not result.has_errors
+        assert result.records_loaded == 1
+        assert loader._people.get("bad-001").name == "bad"
 
 
 class TestETLResult:

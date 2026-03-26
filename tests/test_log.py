@@ -348,8 +348,8 @@ class TestLoggingIntegration:
         messages = [r.getMessage() for r in records]
         assert any("Lineage recorded" in m for m in messages)
 
-    def test_pipeline_warning_on_transform_error(self, tmp_path):
-        """Malformed markdown file triggers a WARNING-level log."""
+    def test_pipeline_handles_missing_name_without_warning(self, tmp_path):
+        """File with no 'name' field falls back to filename stem with no warning."""
         import textwrap
 
         from data_platform.etl.loaders import RepositoryLoader
@@ -371,9 +371,10 @@ class TestLoggingIntegration:
             reader=KnowledgeBaseReader(tmp_path),
             loader=RepositoryLoader(people_repo=PeopleRepository()),
         )
-        pipeline.run()
+        result = pipeline.run()
         warnings = [r for r in records if r.levelno >= logging.WARNING]
-        assert len(warnings) >= 1
+        assert len(warnings) == 0
+        assert result.records_loaded == 1
 
     def test_json_logs_produce_valid_json_per_line(self):
         import io

@@ -55,9 +55,10 @@ class PersonTransformer:
 
     def transform(self, raw: RawDocument) -> Person:
         d = raw.data
+        raw_name = d.get("name") or Path(raw.source).stem
         person = Person(
             id=d.get("id") or str(uuid.uuid4()),
-            name=d["name"],
+            name=raw_name,
             email=d.get("email"),
             role=d.get("role"),
             organization=d.get("organization"),
@@ -98,9 +99,10 @@ class CompanyTransformer:
 
     def transform(self, raw: RawDocument) -> Company:
         d = raw.data
+        raw_name = d.get("name") or Path(raw.source).stem
         company = Company(
             id=d.get("id") or str(uuid.uuid4()),
-            name=d["name"],
+            name=raw_name,
             industry=d.get("industry"),
             size=d.get("size"),
             website=d.get("website"),
@@ -140,9 +142,10 @@ class ProjectTransformer:
 
     def transform(self, raw: RawDocument) -> Project:
         d = raw.data
+        raw_name = d.get("name") or Path(raw.source).stem
         project = Project(
             id=d.get("id") or str(uuid.uuid4()),
-            name=d["name"],
+            name=raw_name,
             description=d.get("description") or d.get("_body"),
             status=d.get("status"),
             owner=d.get("owner"),
