@@ -85,7 +85,7 @@ class TestKnowledgeBaseReader:
 
     def test_read_project_file(self, kb_root: Path):
         reader = KnowledgeBaseReader(kb_root)
-        doc = reader.read_file(kb_root / "projects" / "project-alpha.md")
+        doc = reader.read_file(kb_root / "Properties" / "project-alpha.md")
         assert doc.object_type == "project"
         assert doc.metadata["status"] == "active"
 
@@ -309,7 +309,7 @@ class TestKnowledgeBaseConfigFolderMap:
         assert cfg.folder_map == {
             "person": "people",
             "company": "companies",
-            "project": "projects",
+            "project": "Properties",
         }
 
     def test_custom_folder_map(self):
@@ -333,7 +333,7 @@ class TestKnowledgeBaseConfigFolderMap:
         cfg = KnowledgeBaseConfig(path="/tmp/kb", people_folder="employees")
         assert cfg.folder_map["person"] == "employees"
         assert cfg.folder_map["company"] == "companies"
-        assert cfg.folder_map["project"] == "projects"
+        assert cfg.folder_map["project"] == "Properties"
 
     def test_folder_map_used_by_reader(self, tmp_path: Path):
         from data_platform.config import KnowledgeBaseConfig

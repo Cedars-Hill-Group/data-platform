@@ -8,7 +8,7 @@ The Knowledge Base is a directory of markdown files organised by object type::
             bob-jones.md
         companies/
             acme-corp.md
-        projects/
+        Properties/
             project-alpha.md
 
 Each file contains a YAML front-matter block followed by free-form markdown
@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 OBJECT_TYPE_DIRS: dict[str, str] = {
     "people": "person",
     "companies": "company",
-    "projects": "project",
+    "Properties": "project",
 }
 
 
@@ -96,7 +96,7 @@ class KnowledgeBaseReader:
         Path to the KB root directory (from ``config.yaml``).
     folder_map:
         Optional mapping from canonical type name to sub-folder name,
-        e.g. ``{"person": "people", "company": "companies", "project": "projects"}``.
+        e.g. ``{"person": "people", "company": "companies", "project": "Properties"}``.
         When *None*, the defaults from :data:`OBJECT_TYPE_DIRS` are used.
         Pass ``config.knowledge_base.folder_map`` to use configured paths.
     """
@@ -133,7 +133,7 @@ class KnowledgeBaseReader:
             If *file_path* does not exist.
         ValueError
             If the file is not located inside a recognised object-type
-            sub-directory (``people/``, ``companies/``, ``projects/``).
+            sub-directory (``people/``, ``companies/``, ``Properties/``).
         """
         file_path = Path(file_path)
         if not file_path.exists():

@@ -19,7 +19,7 @@ def kb_root(tmp_path: Path) -> Path:
     """Create a minimal markdown Knowledge Base under *tmp_path*."""
     (tmp_path / "people").mkdir()
     (tmp_path / "companies").mkdir()
-    (tmp_path / "projects").mkdir()
+    (tmp_path / "Properties").mkdir()
 
     (tmp_path / "people" / "alice-smith.md").write_text(
         textwrap.dedent(
@@ -69,7 +69,7 @@ def kb_root(tmp_path: Path) -> Path:
             """
         )
     )
-    (tmp_path / "projects" / "project-alpha.md").write_text(
+    (tmp_path / "Properties" / "project-alpha.md").write_text(
         textwrap.dedent(
             """\
             ---

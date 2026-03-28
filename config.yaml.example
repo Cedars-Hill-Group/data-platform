@@ -8,18 +8,18 @@
 # The KB must have sub-folders for each object type:
 #   <knowledge_base.path>/people/
 #   <knowledge_base.path>/companies/
-#   <knowledge_base.path>/projects/
+#   <knowledge_base.path>/Properties/
 # The sub-folder names can be overridden using the *_folder keys below.
 knowledge_base:
   path: /path/to/your/knowledge-base
   # Optional: override default sub-folder names.
   # people_folder: people
   # companies_folder: companies
-  # projects_folder: projects
+  # projects_folder: Properties
   # Optional directory-name overrides if your KB uses non-default names.
   companies_dir: companies
   people_dir: people
-  projects_dir: projects
+  projects_dir: Properties
 
 # Output directory for generated artifacts such as properties.json.
 output:

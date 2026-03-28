@@ -61,7 +61,7 @@ The KB root directory must contain sub-folders for each object type:
         bob-jones.md
     companies/
         acme-corp.md
-    projects/
+    Properties/
         project-alpha.md
 ```
 
@@ -95,7 +95,7 @@ tags: [saas, b2b]
 Acme Corp builds enterprise software solutions.
 ```
 
-**Project file** (`projects/project-alpha.md`):
+**Project file** (`Properties/project-alpha.md`):
 ```markdown
 ---
 id: proj-001
@@ -116,7 +116,7 @@ knowledge_base:
   path: /path/to/kb
   people_folder: persons      # default: people
   companies_folder: orgs      # default: companies
-  projects_folder: initiatives  # default: projects
+    projects_folder: initiatives  # default: Properties
 ```
 
 ---
@@ -574,7 +574,7 @@ path = writer.create("company", name="Beta Ltd", industry="Finance", website="ht
 # → <kb_root>/companies/beta-ltd.md
 
 path = writer.create("project", name="Project Beta", status="planning", owner="carol@example.com")
-# → <kb_root>/projects/project-beta.md
+# → <kb_root>/Properties/project-beta.md
 
 # Specify an explicit filename
 path = writer.create("person", filename="cw-2024", name="Carol White", email="carol@example.com")

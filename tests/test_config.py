@@ -90,7 +90,7 @@ class TestConfigModels:
         assert kb.path == tmp_path
         assert kb.companies_dir == "companies"
         assert kb.people_dir == "people"
-        assert kb.projects_dir == "projects"
+        assert kb.projects_dir == "Properties"
 
     def test_database_config_defaults(self):
         db = DatabaseConfig()

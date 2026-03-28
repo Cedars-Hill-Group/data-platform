@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 _TYPE_TO_DIR: dict[str, str] = {
     "person": "people",
     "company": "companies",
-    "project": "projects",
+    "project": "Properties",
 }
 
 
@@ -53,7 +53,7 @@ class KnowledgeBaseWriter:
         Template library instance to render new files.
     folder_map:
         Optional mapping from canonical type name to sub-folder name,
-        e.g. ``{"person": "people", "company": "companies", "project": "projects"}``.
+        e.g. ``{"person": "people", "company": "companies", "project": "Properties"}``.
         When *None*, the defaults from :data:`_TYPE_TO_DIR` are used.
         Pass ``config.knowledge_base.folder_map`` to use configured paths.
     """

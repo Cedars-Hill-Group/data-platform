@@ -16,7 +16,7 @@ def _make_kb(tmp_path: Path) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     companies = tmp_path / "companies"
     people = tmp_path / "people"
-    projects = tmp_path / "projects"
+    projects = tmp_path / "Properties"
     companies.mkdir()
     people.mkdir()
     projects.mkdir()

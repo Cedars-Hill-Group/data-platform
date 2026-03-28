@@ -65,14 +65,20 @@ def collect_property_catalog(
     tuple[BaseModel, Path | None]
         The collected catalog and the saved path (when *output_path* is set).
     """
+    resolved_entity_dirs = entity_dirs or _resolve_entity_dirs(
+        companies_dir="companies",
+        people_dir="people",
+        projects_dir="Properties",
+    )
+
     if ONTOLOGY_CORE_AVAILABLE and OntologyPropertyCollector is not None:
-        collector = OntologyPropertyCollector(knowledge_base_path, entity_dirs=entity_dirs)
+        collector = OntologyPropertyCollector(knowledge_base_path, entity_dirs=resolved_entity_dirs)
         catalog = collector.collect()
     else:
         logger.warning(
             "ontology-core is not available; using local fallback collector for properties.json"
         )
-        catalog = _collect_fallback(knowledge_base_path, entity_dirs=entity_dirs)
+        catalog = _collect_fallback(knowledge_base_path, entity_dirs=resolved_entity_dirs)
 
     saved: Path | None = None
     if output_path is not None:
@@ -95,7 +101,7 @@ def emit_properties_json(
     output_dir: str | Path,
     companies_dir: str = "companies",
     people_dir: str = "people",
-    projects_dir: str = "projects",
+    projects_dir: str = "Properties",
 ) -> tuple[BaseModel, Path]:
     """Mirror ontology-core's KB walk and ``properties.json`` emission flow."""
     entity_dirs = _resolve_entity_dirs(
@@ -118,7 +124,7 @@ def _collect_fallback(
     entity_dirs: dict[str, type] | None = None,
 ) -> PropertyCatalog:
     kb_path = Path(knowledge_base_path).resolve()
-    directory_names = list(entity_dirs) if entity_dirs else ["companies", "people", "projects"]
+    directory_names = list(entity_dirs) if entity_dirs else ["companies", "people", "Properties"]
 
     firm_type_values: dict[str, PropertyValue] = {}
     focus_values: dict[str, PropertyValue] = {}

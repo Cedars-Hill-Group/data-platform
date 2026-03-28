@@ -35,7 +35,7 @@ class KnowledgeBaseConfig(BaseModel):
     path: Path = Field(..., description="Root directory of the markdown Knowledge Base.")
     people_folder: str = Field("people", description="Sub-folder name for person documents.")
     companies_folder: str = Field("companies", description="Sub-folder name for company documents.")
-    projects_folder: str = Field("projects", description="Sub-folder name for project documents.")
+    projects_folder: str = Field("Properties", description="Sub-folder name for project documents.")
 
     @property
     def folder_map(self) -> dict[str, str]:
@@ -43,7 +43,7 @@ class KnowledgeBaseConfig(BaseModel):
 
         Example::
 
-            {"person": "people", "company": "companies", "project": "projects"}
+            {"person": "people", "company": "companies", "project": "Properties"}
         """
         return {
             "person": self.people_folder,
@@ -52,7 +52,7 @@ class KnowledgeBaseConfig(BaseModel):
         }
     companies_dir: str = Field("companies", description="Sub-directory name for company files.")
     people_dir: str = Field("people", description="Sub-directory name for person files.")
-    projects_dir: str = Field("projects", description="Sub-directory name for project files.")
+    projects_dir: str = Field("Properties", description="Sub-directory name for project files.")
 
 
 class OutputConfig(BaseModel):
