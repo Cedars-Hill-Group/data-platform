@@ -13,6 +13,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-frontmatter>=1.1",
     "sqlalchemy>=2.0",
+    "openai>=1.0",
     "ontology-core @ git+https://github.com/rounder22/ontology-core.git",
 ]
 

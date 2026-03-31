@@ -15,10 +15,28 @@ Usage::
     from data_platform.ontology_adapter import Company, Person, Project, TemplateLibrary
 
     person = Person(name="Alice", email="alice@example.com")
+
+Catalog types::
+
+    from data_platform.ontology_adapter import (
+        AttributesCatalog,
+        NaicsCatalog,
+        DEFAULT_ATTRIBUTES_CATALOG,
+        DEFAULT_NAICS_CATALOG,
+    )
 """
 
 from __future__ import annotations
 
+from data_platform._stubs.catalogs import (
+    DEFAULT_ATTRIBUTES_CATALOG,
+    DEFAULT_NAICS_CATALOG,
+    AttributesCatalog,
+    CatalogProperty,
+    CatalogPropertyValue,
+    NaicsCatalog,
+    NaicsEntry,
+)
 from data_platform._stubs.ontology_stubs import Company, Person, Project, TemplateLibrary
 
 try:
@@ -35,8 +53,24 @@ except ImportError:
     PropertyValue = None  # type: ignore[assignment]
     ONTOLOGY_CORE_AVAILABLE = False
 
+# Attempt to override catalog implementations with ontology-core versions when available.
+try:
+    from ontology.catalogs.attributes import (
+        AttributesCatalog,  # type: ignore[import-not-found,no-redef]
+    )
+    from ontology.catalogs.naics import NaicsCatalog  # type: ignore[import-not-found,no-redef]
+except ImportError:
+    pass  # Already imported from stubs above.
+
 __all__ = [
+    "AttributesCatalog",
+    "CatalogProperty",
+    "CatalogPropertyValue",
     "Company",
+    "DEFAULT_ATTRIBUTES_CATALOG",
+    "DEFAULT_NAICS_CATALOG",
+    "NaicsCatalog",
+    "NaicsEntry",
     "ONTOLOGY_CORE_AVAILABLE",
     "PropertyCatalog",
     "PropertyCollector",
