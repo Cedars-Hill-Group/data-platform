@@ -25,10 +25,14 @@ from data_platform.ontology_adapter import TemplateLibrary
 logger = get_logger(__name__)
 
 
-# Map canonical type name → sub-directory
+# Map canonical type name → sub-directory.
+# ``"property"`` is the current canonical type; ``"project"`` is retained as a
+# backward-compatible alias pointing to the same ``Properties/`` folder.
 _TYPE_TO_DIR: dict[str, str] = {
     "person": "people",
     "company": "companies",
+    "property": "Properties",
+    # Backward-compatible alias.
     "project": "Properties",
 }
 
@@ -53,7 +57,7 @@ class KnowledgeBaseWriter:
         Template library instance to render new files.
     folder_map:
         Optional mapping from canonical type name to sub-folder name,
-        e.g. ``{"person": "people", "company": "companies", "project": "Properties"}``.
+        e.g. ``{"person": "people", "company": "companies", "property": "Properties"}``.
         When *None*, the defaults from :data:`_TYPE_TO_DIR` are used.
         Pass ``config.knowledge_base.folder_map`` to use configured paths.
     """
@@ -88,7 +92,8 @@ class KnowledgeBaseWriter:
         Parameters
         ----------
         object_type:
-            One of ``"person"``, ``"company"``, ``"project"``.
+            One of ``"person"``, ``"company"``, ``"property"``
+            (``"project"`` is also accepted for backward compatibility).
         filename:
             Optional explicit filename (without ``.md`` extension).  Defaults
             to a slug derived from the ``name`` field.
@@ -153,9 +158,14 @@ class KnowledgeBaseWriter:
         merged.update(fields)
         logger.debug("Updating %s with %d field(s)", file_path.name, len(fields))
 
-        # Determine object type from parent dir name
+        # Determine object type from parent dir name.
+        # Build reverse map, but prefer "property" over the legacy "project" alias.
         parent_name = file_path.parent.name
-        reverse_map = {v: k for k, v in self._type_to_dir.items()}
+        reverse_map: dict[str, str] = {}
+        for type_key, dir_name in self._type_to_dir.items():
+            # Only overwrite an existing entry if the new key is not a legacy alias.
+            if dir_name not in reverse_map or type_key != "project":
+                reverse_map[dir_name] = type_key
         object_type = reverse_map.get(parent_name)
         if object_type is None:
             raise ValueError(

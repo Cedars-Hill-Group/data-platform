@@ -12,9 +12,12 @@ If dependencies are unavailable, this module falls back to local stubs.
 
 Usage::
 
-    from data_platform.ontology_adapter import Company, Person, Project, TemplateLibrary
+    from data_platform.ontology_adapter import Company, Person, Property, TemplateLibrary
 
     person = Person(name="Alice", email="alice@example.com")
+
+    # ``Project`` is a backward-compatible alias for ``Property``.
+    from data_platform.ontology_adapter import Project  # noqa: F401
 
 Catalog types::
 
@@ -37,7 +40,13 @@ from data_platform._stubs.catalogs import (
     NaicsCatalog,
     NaicsEntry,
 )
-from data_platform._stubs.ontology_stubs import Company, Person, Project, TemplateLibrary
+from data_platform._stubs.ontology_stubs import (
+    Company,
+    Person,
+    Project,
+    Property,
+    TemplateLibrary,
+)
 
 try:
     from ontology.properties.collector import PropertyCollector  # type: ignore[import-not-found]
@@ -53,7 +62,16 @@ except ImportError:
     PropertyValue = None  # type: ignore[assignment]
     ONTOLOGY_CORE_AVAILABLE = False
 
-# Attempt to override catalog implementations with ontology-core versions when available.
+# Attempt to override entity and catalog implementations with ontology-core
+# versions when available.
+try:
+    from ontology.entities.property import Property  # type: ignore[import-not-found,no-redef]
+
+    #: Keep ``Project`` in sync with the overridden ``Property`` from ontology-core.
+    Project = Property  # type: ignore[misc]
+except ImportError:
+    pass  # Already imported from stubs above.
+
 try:
     from ontology.catalogs.attributes import (
         AttributesCatalog,  # type: ignore[import-not-found,no-redef]
@@ -77,5 +95,6 @@ __all__ = [
     "PropertyValue",
     "Person",
     "Project",
+    "Property",
     "TemplateLibrary",
 ]

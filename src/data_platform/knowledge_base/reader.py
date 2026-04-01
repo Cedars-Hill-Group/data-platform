@@ -43,11 +43,16 @@ logger = get_logger(__name__)
 
 
 # Recognised sub-directory names mapped to canonical object type names.
+# ``"property"`` is the current canonical type; ``"project"`` is a
+# backward-compatible alias that resolves to the same ``Properties/`` folder.
 OBJECT_TYPE_DIRS: dict[str, str] = {
     "people": "person",
     "companies": "company",
-    "Properties": "project",
+    "Properties": "property",
 }
+
+# Backward-compatible alias – callers using ``"project"`` still work.
+_LEGACY_TYPE_ALIASES: dict[str, str] = {"project": "property"}
 
 
 class ParsedDocument:
@@ -110,7 +115,6 @@ class KnowledgeBaseReader:
         else:
             self._type_to_dir = {v: k for k, v in OBJECT_TYPE_DIRS.items()}
             self._dir_to_type = dict(OBJECT_TYPE_DIRS)
-
     @property
     def root(self) -> Path:
         return self._root
@@ -160,18 +164,20 @@ class KnowledgeBaseReader:
         object_type:
             When supplied, only files from the matching sub-directory are
             returned.  Accepted values: ``"person"``, ``"company"``,
-            ``"project"``.  When ``None``, all types are returned.
+            ``"property"`` (or ``"project"`` for backward compatibility).
+            When ``None``, all types are returned.
 
         Returns
         -------
         list[ParsedDocument]
             One entry per ``.md`` file found.
         """
+        resolved_type = self._resolve_type_filter(object_type)
         filter_msg = f" (type={object_type!r})" if object_type else ""
         logger.info("Reading Knowledge Base from %s%s", self._root, filter_msg)
         docs: list[ParsedDocument] = []
         for otype, dir_name in self._type_to_dir.items():
-            if object_type and otype != object_type:
+            if resolved_type and otype != resolved_type:
                 continue
             type_dir = self._root / dir_name
             if not type_dir.is_dir():
@@ -189,10 +195,13 @@ class KnowledgeBaseReader:
         ----------
         object_type:
             When supplied, restrict to the sub-directory for that type.
+            ``"project"`` is accepted as a backward-compatible alias for
+            ``"property"`` when using the default folder map.
         """
+        resolved_type = self._resolve_type_filter(object_type)
         paths: list[Path] = []
         for otype, dir_name in self._type_to_dir.items():
-            if object_type and otype != object_type:
+            if resolved_type and otype != resolved_type:
                 continue
             type_dir = self._root / dir_name
             if not type_dir.is_dir():
@@ -203,6 +212,19 @@ class KnowledgeBaseReader:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _resolve_type_filter(self, object_type: str | None) -> str | None:
+        """Return the canonical type key for *object_type*, resolving legacy aliases.
+
+        If *object_type* is already a key in the current folder map it is
+        returned unchanged.  Otherwise the :data:`_LEGACY_TYPE_ALIASES` table
+        is consulted (e.g. ``"project"`` → ``"property"`` for the default map).
+        """
+        if object_type is None:
+            return None
+        if object_type in self._type_to_dir:
+            return object_type
+        return _LEGACY_TYPE_ALIASES.get(object_type, object_type)
 
     def _detect_object_type(self, file_path: Path) -> str:
         """Infer the canonical object type from the file's parent directory."""

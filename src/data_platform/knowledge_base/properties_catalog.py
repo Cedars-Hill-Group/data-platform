@@ -180,7 +180,7 @@ def _resolve_entity_dirs(
     try:
         from ontology.entities.company import Company
         from ontology.entities.person import Person
-        from ontology.entities.project import Project
+        from ontology.entities.property import Property  # replaces ontology.entities.project
     except ImportError:
         return {
             companies_dir: object,
@@ -191,7 +191,7 @@ def _resolve_entity_dirs(
     return {
         companies_dir: Company,
         people_dir: Person,
-        projects_dir: Project,
+        projects_dir: Property,
     }
 
 

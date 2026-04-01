@@ -13,11 +13,10 @@ precedence via :mod:`data_platform.ontology_adapter`.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Canonical object models
@@ -35,8 +34,8 @@ class Person(BaseModel):
     bio: str | None = None
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source_file: str | None = Field(
         None, description="Relative path of the originating markdown file."
     )
@@ -55,8 +54,8 @@ class Company(BaseModel):
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source_file: str | None = Field(
         None, description="Relative path of the originating markdown file."
     )
@@ -64,8 +63,12 @@ class Company(BaseModel):
     model_config = {"extra": "allow"}
 
 
-class Project(BaseModel):
-    """Canonical representation of a project in the knowledge base."""
+class Property(BaseModel):
+    """Canonical representation of a property in the knowledge base.
+
+    Replaces the former ``Project`` entity; ``Project`` is retained as a
+    backward-compatible alias.
+    """
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
@@ -75,13 +78,17 @@ class Project(BaseModel):
     members: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source_file: str | None = Field(
         None, description="Relative path of the originating markdown file."
     )
 
     model_config = {"extra": "allow"}
+
+
+#: Backward-compatible alias – prefer :class:`Property` in new code.
+Project = Property
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +125,7 @@ tags: []
 > Add a company description here.
 """
 
-_PROJECT_TEMPLATE = """\
+_PROPERTY_TEMPLATE = """\
 ---
 id: {id}
 name: {name}
@@ -130,8 +137,11 @@ tags: []
 
 # {name}
 
-> Add a project description here.
+> Add a property description here.
 """
+
+#: Backward-compatible alias – prefer ``_PROPERTY_TEMPLATE`` in new code.
+_PROJECT_TEMPLATE = _PROPERTY_TEMPLATE
 
 
 class TemplateLibrary:
@@ -145,7 +155,9 @@ class TemplateLibrary:
     _templates: dict[str, str] = {
         "person": _PERSON_TEMPLATE,
         "company": _COMPANY_TEMPLATE,
-        "project": _PROJECT_TEMPLATE,
+        "property": _PROPERTY_TEMPLATE,
+        # "project" kept as a backward-compatible alias.
+        "project": _PROPERTY_TEMPLATE,
     }
 
     def get_template(self, object_type: str) -> str:
@@ -154,8 +166,9 @@ class TemplateLibrary:
         Parameters
         ----------
         object_type:
-            One of ``"person"``, ``"company"``, or ``"project"``
-            (case-insensitive).
+            One of ``"person"``, ``"company"``, or ``"property"``
+            (``"project"`` is also accepted for backward compatibility;
+            case-insensitive).
 
         Raises
         ------

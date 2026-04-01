@@ -86,7 +86,7 @@ class TestKnowledgeBaseReader:
     def test_read_project_file(self, kb_root: Path):
         reader = KnowledgeBaseReader(kb_root)
         doc = reader.read_file(kb_root / "Properties" / "project-alpha.md")
-        assert doc.object_type == "project"
+        assert doc.object_type == "property"
         assert doc.metadata["status"] == "active"
 
     def test_read_all_returns_all(self, kb_root: Path):
@@ -223,7 +223,8 @@ class TestTemplateLibrary:
 
     def test_available_types(self):
         lib = TemplateLibrary()
-        assert set(lib.available_types) == {"person", "company", "project"}
+        # "property" is the canonical type; "project" is retained as a backward-compatible alias.
+        assert set(lib.available_types) == {"person", "company", "property", "project"}
 
 
 class TestCustomFolderMapReader:
@@ -357,6 +358,7 @@ class TestKnowledgeBaseConfigFolderMap:
     def test_config_yaml_with_custom_folders(self, tmp_path: Path):
         """KnowledgeBaseConfig loads custom folder names from YAML."""
         import yaml
+
         from data_platform.config import get_config, reset_config_cache
 
         reset_config_cache()
