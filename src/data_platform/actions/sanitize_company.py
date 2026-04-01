@@ -33,6 +33,9 @@ Example::
     results = sanitizer.sanitize_all()
     for r in results:
         print(r)
+
+    # Test on a limited number of files first:
+    results = sanitizer.sanitize_all(limit=5)
 """
 
 from __future__ import annotations
@@ -245,18 +248,29 @@ class CompanySanitizer:
     # Public API
     # ------------------------------------------------------------------
 
-    def sanitize_all(self) -> list[SanitizeResult]:
-        """Sanitize all company markdown files in the Knowledge Base.
+    def sanitize_all(self, limit: int | None = None) -> list[SanitizeResult]:
+        """Sanitize company markdown files in the Knowledge Base.
+
+        Parameters
+        ----------
+        limit:
+            When provided, process at most *limit* files.  Useful for a
+            quick test-run on a subset of the Knowledge Base before committing
+            to the full sanitization.  When ``None`` (the default), all files
+            are processed.
 
         Returns
         -------
         list[SanitizeResult]
-            One result per company file found.
+            One result per company file processed.
         """
         files = self._reader.list_files(object_type="company")
+        if limit is not None:
+            files = files[:limit]
         logger.info(
-            "Starting company metadata sanitization: %d file(s)%s",
+            "Starting company metadata sanitization: %d file(s)%s%s",
             len(files),
+            f" (limit={limit})" if limit is not None else "",
             " [dry run]" if self._dry_run else "",
         )
         results: list[SanitizeResult] = []

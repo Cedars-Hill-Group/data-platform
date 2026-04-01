@@ -511,6 +511,76 @@ class TestSanitizeAll:
         results = sanitizer.sanitize_all()
         assert results == []
 
+    def test_limit_restricts_files_processed(
+        self,
+        kb_root: Path,
+        companies_dir: Path,
+        minimal_catalog: AttributesCatalog,
+        minimal_naics: NaicsCatalog,
+    ):
+        """sanitize_all(limit=N) processes at most N files."""
+        for i in range(1, 6):
+            _make_company_file(
+                companies_dir, f"co{i}.md", {"name": f"Co{i}"}, f"Co{i} description."
+            )
+
+        per_file_responses = [
+            '["private_equity"]',
+            '["technology"]',
+            "https://co.example.com",
+            json.dumps({"naics_sector_code": "52", "naics_sector_title": "Finance",
+                        "naics_code": "5231", "naics_title": "Securities"}),
+        ]
+        # Provide enough responses for up to 5 files, but expect only 3 used.
+        llm = _make_llm(per_file_responses * 5)
+        sanitizer = CompanySanitizer(
+            kb_root, llm, minimal_catalog, minimal_naics, dry_run=True
+        )
+        results = sanitizer.sanitize_all(limit=3)
+        assert len(results) == 3
+        assert all(r.success for r in results)
+
+    def test_limit_larger_than_file_count(
+        self,
+        kb_root: Path,
+        companies_dir: Path,
+        minimal_catalog: AttributesCatalog,
+        minimal_naics: NaicsCatalog,
+    ):
+        """sanitize_all(limit=N) with N > total files processes all files."""
+        _make_company_file(companies_dir, "only.md", {"name": "Only"}, "Only company.")
+
+        per_file_responses = [
+            '["private_equity"]',
+            '["technology"]',
+            "https://only.example.com",
+            json.dumps({"naics_sector_code": "52", "naics_sector_title": "Finance",
+                        "naics_code": "5231", "naics_title": "Securities"}),
+        ]
+        llm = _make_llm(per_file_responses)
+        sanitizer = CompanySanitizer(
+            kb_root, llm, minimal_catalog, minimal_naics, dry_run=True
+        )
+        results = sanitizer.sanitize_all(limit=100)
+        assert len(results) == 1
+
+    def test_limit_zero_returns_empty_list(
+        self,
+        kb_root: Path,
+        companies_dir: Path,
+        minimal_catalog: AttributesCatalog,
+        minimal_naics: NaicsCatalog,
+    ):
+        """sanitize_all(limit=0) processes no files."""
+        _make_company_file(companies_dir, "co.md", {"name": "Co"}, "Co description.")
+        llm = _make_llm([])
+        sanitizer = CompanySanitizer(
+            kb_root, llm, minimal_catalog, minimal_naics, dry_run=True
+        )
+        results = sanitizer.sanitize_all(limit=0)
+        assert results == []
+        llm.chat.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Default catalog stubs
