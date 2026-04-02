@@ -14,11 +14,14 @@ Usage::
 from __future__ import annotations
 
 import os
+from importlib import import_module
 from typing import Any
 
 from data_platform.log import get_logger
 
 logger = get_logger(__name__)
+
+_dotenv = import_module("dotenv")
 
 try:
     import openai as _openai
@@ -29,6 +32,14 @@ except ImportError:  # pragma: no cover
     _OPENAI_AVAILABLE = False
 
 _DEFAULT_MODEL = "gpt-4o-mini"
+
+
+_MISSING_API_KEY_MSG = (
+    "OpenAI API key is missing. Set OPENAI_API_KEY in your .env file, "
+    "in your environment, or pass api_key=... when constructing LLMClient.\n\n"
+    "PowerShell (current shell): $env:OPENAI_API_KEY = 'sk-...'\n"
+    "PowerShell (persist for future shells): setx OPENAI_API_KEY 'sk-...'"
+)
 
 
 class LLMClient:
@@ -69,7 +80,10 @@ class LLMClient:
                 "The 'openai' package is required to use LLMClient. "
                 "Install it with: pip install openai"
             )
+        _dotenv.load_dotenv(_dotenv.find_dotenv(usecwd=True), override=False)
         resolved_key = api_key or os.environ.get("OPENAI_API_KEY")
+        if not resolved_key:
+            raise ValueError(_MISSING_API_KEY_MSG)
         self._client = _openai.OpenAI(api_key=resolved_key, **client_kwargs)
         self.model = model
         self.temperature = temperature

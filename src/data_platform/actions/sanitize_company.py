@@ -25,7 +25,7 @@ Example::
 
     client = LLMClient(api_key="sk-...")
     sanitizer = CompanySanitizer(
-        kb_root="/path/to/kb",
+        kb_root=None,  # Uses knowledge_base.path from config.yaml
         llm_client=client,
         attributes_catalog=DEFAULT_ATTRIBUTES_CATALOG,
         naics_catalog=DEFAULT_NAICS_CATALOG,
@@ -41,11 +41,13 @@ Example::
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import frontmatter
 
+from data_platform.config import get_config
 from data_platform.knowledge_base.reader import KnowledgeBaseReader, ParsedDocument
 from data_platform.log import get_logger
 from data_platform.ontology_adapter import AttributesCatalog, NaicsCatalog
@@ -54,6 +56,20 @@ if TYPE_CHECKING:
     from data_platform.actions.llm_client import LLMClient
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# JSON encoder for serialization
+# ---------------------------------------------------------------------------
+
+
+class _DatetimeEncoder(json.JSONEncoder):
+    """JSON encoder that handles datetime objects by converting them to ISO format strings."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 # ---------------------------------------------------------------------------
 # Prompt templates
@@ -201,7 +217,9 @@ class CompanySanitizer:
     Parameters
     ----------
     kb_root:
-        Root directory of the markdown Knowledge Base.
+        Root directory of the markdown Knowledge Base. If ``None``, the value
+        is loaded from ``config.yaml`` via
+        ``get_config().knowledge_base.path``.
     llm_client:
         An :class:`~data_platform.actions.llm_client.LLMClient` instance used
         for all LLM calls.
@@ -223,7 +241,7 @@ class CompanySanitizer:
 
     def __init__(
         self,
-        kb_root: Path | str,
+        kb_root: Path | str | None,
         llm_client: LLMClient,
         attributes_catalog: AttributesCatalog,
         naics_catalog: NaicsCatalog,
@@ -232,7 +250,13 @@ class CompanySanitizer:
         dry_run: bool = False,
         body_text_limit: int = 2000,
     ) -> None:
-        self._kb_root = Path(kb_root)
+        resolved_kb_root = (
+            Path(kb_root)
+            if kb_root is not None
+            else Path(get_config().knowledge_base.path)
+        )
+
+        self._kb_root = resolved_kb_root
         self._llm = llm_client
         self._attributes = attributes_catalog
         self._naics = naics_catalog
@@ -240,7 +264,7 @@ class CompanySanitizer:
         self._body_text_limit = body_text_limit
 
         self._reader = KnowledgeBaseReader(
-            kb_root,
+            resolved_kb_root,
             folder_map={"company": companies_folder},
         )
 
@@ -365,7 +389,7 @@ class CompanySanitizer:
                 field_description=prop.description,
                 accept_multiple=accept_multiple,
                 values_list=values_list,
-                metadata=json.dumps(doc.metadata, indent=2),
+                metadata=json.dumps(doc.metadata, indent=2, cls=_DatetimeEncoder),
                 body_text=doc.content[: self._body_text_limit],
                 multiple_instruction=multiple_instruction,
             )
@@ -432,7 +456,7 @@ class CompanySanitizer:
             user_template = _WEBSITE_AGENT_USER
 
         user_prompt = user_template.format(
-            metadata=json.dumps(doc.metadata, indent=2),
+            metadata=json.dumps(doc.metadata, indent=2, cls=_DatetimeEncoder),
             body_text=doc.content[: self._body_text_limit],
             focus_context=focus_context,
         )
@@ -456,7 +480,7 @@ class CompanySanitizer:
         )
 
         user_prompt = _NAICS_USER.format(
-            metadata=json.dumps(doc.metadata, indent=2),
+            metadata=json.dumps(doc.metadata, indent=2, cls=_DatetimeEncoder),
             body_text=doc.content[: self._body_text_limit],
             naics_sectors=sectors_summary,
         )

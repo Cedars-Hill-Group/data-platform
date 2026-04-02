@@ -582,6 +582,43 @@ class TestSanitizeAll:
         llm.chat.assert_not_called()
 
 
+class TestConfigKbRoot:
+    def test_uses_config_yaml_when_kb_root_is_none(
+        self,
+        tmp_path: Path,
+        minimal_catalog: AttributesCatalog,
+        minimal_naics: NaicsCatalog,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        kb_path = tmp_path / "kb"
+        (kb_path / "companies").mkdir(parents=True)
+
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            f"knowledge_base:\n  path: {kb_path}\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setenv("DATA_PLATFORM_CONFIG", str(config_path))
+
+        from data_platform.config import reset_config_cache
+
+        reset_config_cache()
+        try:
+            llm = _make_llm([])
+            sanitizer = CompanySanitizer(
+                None,
+                llm,
+                minimal_catalog,
+                minimal_naics,
+                dry_run=True,
+            )
+            assert sanitizer._kb_root == kb_path
+            assert sanitizer.sanitize_all() == []
+        finally:
+            reset_config_cache()
+
+
 # ---------------------------------------------------------------------------
 # Default catalog stubs
 # ---------------------------------------------------------------------------
