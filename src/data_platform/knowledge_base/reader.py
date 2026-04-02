@@ -33,6 +33,7 @@ Example front-matter::
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 import frontmatter
@@ -68,9 +69,22 @@ class ParsedDocument:
         Parsed YAML front-matter as a dict.
     content:
         The markdown body text (everything after the front-matter block).
+    headers:
+        Ordered list of markdown ATX headers found in ``content``.
+    header_sections:
+        Mapping of header title to a list of section bodies found under
+        that header. A list is used because header titles can repeat.
     """
 
-    __slots__ = ("path", "object_type", "metadata", "content")
+    __slots__ = (
+        "path",
+        "object_type",
+        "metadata",
+        "content",
+        "headers",
+        "header_sections",
+        "header_entries",
+    )
 
     def __init__(
         self,
@@ -83,6 +97,7 @@ class ParsedDocument:
         self.object_type = object_type
         self.metadata = metadata
         self.content = content
+        self.headers, self.header_sections, self.header_entries = self._parse_headers(content)
 
     def __repr__(self) -> str:
         return (
@@ -90,6 +105,107 @@ class ParsedDocument:
             f"object_type={self.object_type!r}, "
             f"metadata_keys={sorted(self.metadata)!r})"
         )
+
+    def get_header_content(
+        self,
+        header: str,
+        *,
+        case_sensitive: bool = True,
+        normalize: bool = False,
+    ) -> list[str]:
+        """Return section body text occurrences for a specific *header*."""
+        selected = self.select_header_content(
+            [header],
+            case_sensitive=case_sensitive,
+            normalize=normalize,
+        )
+        return selected[header]
+
+    def select_header_content(
+        self,
+        headers: list[str],
+        *,
+        case_sensitive: bool = True,
+        normalize: bool = False,
+    ) -> dict[str, list[str]]:
+        """Return section bodies for selected *headers*.
+
+        Parameters
+        ----------
+        headers:
+            Header labels to select.
+        case_sensitive:
+            Whether matches must have exact casing.
+        normalize:
+            Whether to normalise headers before matching by trimming wrapping
+            punctuation and collapsing whitespace.
+        """
+        selections: dict[str, list[str]] = {}
+        for requested in headers:
+            requested_key = self._match_key(
+                requested,
+                case_sensitive=case_sensitive,
+                normalize=normalize,
+            )
+            matches: list[str] = []
+            for parsed_header, section_body in self.header_entries:
+                parsed_key = self._match_key(
+                    parsed_header,
+                    case_sensitive=case_sensitive,
+                    normalize=normalize,
+                )
+                if parsed_key == requested_key:
+                    matches.append(section_body)
+            selections[requested] = matches
+        return selections
+
+    @staticmethod
+    def _parse_headers(content: str) -> tuple[list[str], dict[str, list[str]], list[tuple[str, str]]]:
+        """Parse ATX markdown headers and their section body content.
+
+        A section spans from a header line to the next header of the same
+        or higher level.
+        """
+        header_pattern = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+        lines = content.splitlines()
+        header_nodes: list[tuple[int, int, str]] = []
+        for line_number, line in enumerate(lines):
+            match = header_pattern.match(line)
+            if not match:
+                continue
+            level = len(match.group(1))
+            title = match.group(2).strip()
+            header_nodes.append((line_number, level, title))
+
+        if not header_nodes:
+            return [], {}, []
+
+        headers = [title for _, _, title in header_nodes]
+        sections: dict[str, list[str]] = {}
+        entries: list[tuple[str, str]] = []
+        for index, (line_number, level, title) in enumerate(header_nodes):
+            section_end = len(lines)
+            for next_line, next_level, _ in header_nodes[index + 1 :]:
+                if next_level <= level:
+                    section_end = next_line
+                    break
+            section_body = "\n".join(lines[line_number + 1 : section_end]).strip()
+            sections.setdefault(title, []).append(section_body)
+            entries.append((title, section_body))
+        return headers, sections, entries
+
+    @staticmethod
+    def _match_key(header: str, *, case_sensitive: bool, normalize: bool) -> str:
+        """Return a comparable key for header matching."""
+        key = header.strip()
+        if normalize:
+            # Tolerate common markdown/header punctuation differences.
+            key = re.sub(r"\s+", " ", key)
+            key = key.strip("#")
+            key = key.strip(" \t-_:;,.!?\"'`()[]{}")
+        if not case_sensitive:
+            key = key.casefold()
+        return key
 
 
 class KnowledgeBaseReader:
@@ -208,6 +324,22 @@ class KnowledgeBaseReader:
                 continue
             paths.extend(sorted(type_dir.glob("**/*.md")))
         return paths
+
+    def select_header_content(
+        self,
+        file_path: Path,
+        headers: list[str],
+        *,
+        case_sensitive: bool = True,
+        normalize: bool = False,
+    ) -> dict[str, list[str]]:
+        """Read *file_path* and return content for selected markdown headers."""
+        doc = self.read_file(file_path)
+        return doc.select_header_content(
+            headers,
+            case_sensitive=case_sensitive,
+            normalize=normalize,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -41,7 +41,7 @@ Example::
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -64,10 +64,12 @@ logger = get_logger(__name__)
 
 
 class _DatetimeEncoder(json.JSONEncoder):
-    """JSON encoder that handles datetime objects by converting them to ISO format strings."""
+    """JSON encoder that handles datetime and date objects by converting them to ISO format strings."""
 
     def default(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, date):
             return obj.isoformat()
         return super().default(obj)
 
@@ -272,6 +274,15 @@ class CompanySanitizer:
     # Public API
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _format_changes(doc: ParsedDocument, changes: dict[str, Any]) -> str:
+        """Format field changes as 'field: old_value -> new_value' for logging."""
+        formatted = []
+        for field, new_value in changes.items():
+            old_value = doc.metadata.get(field, "<not set>")
+            formatted.append(f"{field}: {old_value!r} -> {new_value!r}")
+        return "; ".join(formatted)
+
     def sanitize_all(self, limit: int | None = None) -> list[SanitizeResult]:
         """Sanitize company markdown files in the Knowledge Base.
 
@@ -351,15 +362,16 @@ class CompanySanitizer:
             logger.error("NAICS classification failed for %s: %s", file_path.name, exc)
 
         if changes:
+            formatted_changes = self._format_changes(doc, changes)
             if self._dry_run:
                 logger.info(
                     "Dry run – would update %s: %s",
                     file_path.name,
-                    sorted(changes),
+                    formatted_changes,
                 )
             else:
                 self._write_metadata(file_path, {**doc.metadata, **changes})
-                logger.info("Updated %s: %s", file_path.name, sorted(changes))
+                logger.info("Updated %s: %s", file_path.name, formatted_changes)
         else:
             logger.info("No changes for %s", file_path.name)
 

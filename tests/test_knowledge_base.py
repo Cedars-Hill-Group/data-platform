@@ -132,6 +132,114 @@ class TestKnowledgeBaseReader:
         doc = reader.read_file(kb_root / "people" / "alice-smith.md")
         assert "alice-smith.md" in repr(doc)
 
+    def test_read_file_emits_headers_and_sections(self, kb_root: Path):
+        profile = kb_root / "people" / "carol-lee.md"
+        profile.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-003
+                name: Carol Lee
+                ---
+
+                # Summary
+                Carol is a platform engineer.
+
+                ## Skills
+                Python
+                Data Engineering
+
+                # Notes
+                Prefers async collaboration.
+                """
+            )
+        )
+        reader = KnowledgeBaseReader(kb_root)
+        doc = reader.read_file(profile)
+
+        assert doc.headers == ["Summary", "Skills", "Notes"]
+        assert doc.get_header_content("Summary") == [
+            "Carol is a platform engineer.\n\n## Skills\nPython\nData Engineering"
+        ]
+        assert doc.get_header_content("Skills") == ["Python\nData Engineering"]
+        assert doc.get_header_content("Missing") == []
+
+    def test_reader_select_header_content(self, kb_root: Path):
+        profile = kb_root / "people" / "dana-park.md"
+        profile.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-004
+                name: Dana Park
+                ---
+
+                # Experience
+                Built data ingestion pipelines.
+
+                # Interests
+                Mentoring and architecture.
+                """
+            )
+        )
+        reader = KnowledgeBaseReader(kb_root)
+        selected = reader.select_header_content(profile, ["Interests", "Experience", "Unknown"])
+
+        assert selected == {
+            "Interests": ["Mentoring and architecture."],
+            "Experience": ["Built data ingestion pipelines."],
+            "Unknown": [],
+        }
+
+    def test_select_header_content_case_insensitive(self, kb_root: Path):
+        profile = kb_root / "people" / "erin-kim.md"
+        profile.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-005
+                name: Erin Kim
+                ---
+
+                # Skills
+                SQL and Python.
+                """
+            )
+        )
+        reader = KnowledgeBaseReader(kb_root)
+        selected = reader.select_header_content(
+            profile,
+            ["skills"],
+            case_sensitive=False,
+        )
+
+        assert selected == {"skills": ["SQL and Python."]}
+
+    def test_select_header_content_with_normalization(self, kb_root: Path):
+        profile = kb_root / "people" / "finn-ray.md"
+        profile.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-006
+                name: Finn Ray
+                ---
+
+                # Overview:
+                Works on reliability.
+                """
+            )
+        )
+        reader = KnowledgeBaseReader(kb_root)
+        selected = reader.select_header_content(
+            profile,
+            ["overview"],
+            case_sensitive=False,
+            normalize=True,
+        )
+
+        assert selected == {"overview": ["Works on reliability."]}
+
 
 class TestKnowledgeBaseWriter:
     def test_create_person_file(self, tmp_path: Path):
@@ -188,6 +296,136 @@ class TestKnowledgeBaseWriter:
         writer = KnowledgeBaseWriter(tmp_path)
         with pytest.raises(ValueError, match="Unknown object type"):
             writer.create("invoice", name="INV-001")
+
+    def test_write_header_section_updates_existing(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        company = kb_root / "companies" / "acme-corp.md"
+        company.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: company-001
+                name: Acme Corp
+                ---
+
+                # Overview
+                Original overview.
+
+                # Notes
+                Existing notes.
+                """
+            )
+        )
+
+        writer.write_header_section(company, "Overview", "Updated overview content.")
+        updated = company.read_text()
+        assert "Updated overview content." in updated
+        assert "Original overview." not in updated
+        assert "Existing notes." in updated
+
+    def test_write_header_section_creates_new_header(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        person = kb_root / "people" / "alice-smith.md"
+
+        writer.write_header_section(
+            person,
+            "Highlights",
+            "Leads platform reliability.",
+            create_if_missing=True,
+            header_level=3,
+        )
+        updated = person.read_text()
+        assert "### Highlights" in updated
+        assert "Leads platform reliability." in updated
+
+    def test_write_header_sections_case_insensitive_normalized(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        person = kb_root / "people" / "bob-jones.md"
+        person.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-002
+                name: Bob Jones
+                ---
+
+                # Profile:
+                Old profile text.
+                """
+            )
+        )
+
+        writer.write_header_sections(
+            person,
+            {"profile": "New profile text."},
+            case_sensitive=False,
+            normalize=True,
+        )
+        updated = person.read_text()
+        assert "New profile text." in updated
+        assert "Old profile text." not in updated
+
+    def test_write_header_section_missing_header_without_create_raises(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        person = kb_root / "people" / "alice-smith.md"
+
+        with pytest.raises(ValueError, match="Header not found"):
+            writer.write_header_section(
+                person,
+                "Does Not Exist",
+                "text",
+                create_if_missing=False,
+            )
+
+    def test_append_header_section_appends_existing_content(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        company = kb_root / "companies" / "acme-corp.md"
+        company.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: company-001
+                name: Acme Corp
+                ---
+
+                # Notes
+                Existing note.
+                """
+            )
+        )
+
+        writer.append_header_section(company, "Notes", "Second note.")
+        updated = company.read_text()
+        assert "Existing note." in updated
+        assert "Second note." in updated
+        assert updated.index("Existing note.") < updated.index("Second note.")
+
+    def test_append_header_section_creates_when_missing(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        person = kb_root / "people" / "alice-smith.md"
+
+        writer.append_header_section(
+            person,
+            "Activity",
+            "Presented at architecture review.",
+            create_if_missing=True,
+            header_level=3,
+        )
+        updated = person.read_text()
+        assert "### Activity" in updated
+        assert "Presented at architecture review." in updated
+
+    def test_append_header_section_missing_without_create_raises(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        person = kb_root / "people" / "bob-jones.md"
+
+        with pytest.raises(ValueError, match="Header not found"):
+            writer.append_header_section(
+                person,
+                "Nope",
+                "Text",
+                create_if_missing=False,
+            )
 
 
 class TestSluggify:
