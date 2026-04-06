@@ -13,7 +13,7 @@ LLM-assisted enrichment tasks:
    official URL and populate the field.
 
 3. **NAICS Sector Classification** – Use an LLM call to assign the most
-   appropriate NAICS code from the full NAICS hierarchy and store the result
+   appropriate NAICS code from the NAICS sector catalog and store the result
    in ``naics_code`` / ``naics_title`` / ``naics_sector_code`` /
    ``naics_sector_title`` metadata fields.
 
@@ -21,20 +21,12 @@ Example::
 
     from data_platform.actions.llm_client import LLMClient
     from data_platform.actions.sanitize_company import CompanySanitizer
-    from data_platform.ontology_adapter import DEFAULT_ATTRIBUTES_CATALOG, DEFAULT_NAICS_CATALOG
 
     client = LLMClient(api_key="sk-...")
     sanitizer = CompanySanitizer(
         kb_root=None,  # Uses knowledge_base.path from config.yaml
         llm_client=client,
-        attributes_catalog=DEFAULT_ATTRIBUTES_CATALOG,
-        naics_catalog=DEFAULT_NAICS_CATALOG,
     )
-    results = sanitizer.sanitize_all()
-    for r in results:
-        print(r)
-
-    # Test on a limited number of files first:
     results = sanitizer.sanitize_all(limit=5)
 """
 
@@ -50,7 +42,12 @@ import frontmatter
 from data_platform.config import get_config
 from data_platform.knowledge_base.reader import KnowledgeBaseReader, ParsedDocument
 from data_platform.log import get_logger
-from data_platform.ontology_adapter import AttributesCatalog, NaicsCatalog
+from data_platform.ontology_adapter import (
+    AttributesCatalog,
+    NaicsCatalog,
+    get_attributes_catalog,
+    get_naics_catalog,
+)
 
 if TYPE_CHECKING:
     from data_platform.actions.llm_client import LLMClient
@@ -58,13 +55,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# JSON encoder for serialization
-# ---------------------------------------------------------------------------
-
-
 class _DatetimeEncoder(json.JSONEncoder):
-    """JSON encoder that handles datetime and date objects by converting them to ISO format strings."""
+    """JSON encoder that serializes ``datetime`` and ``date`` values."""
 
     def default(self, obj: Any) -> Any:
         if isinstance(obj, datetime):
@@ -73,15 +65,13 @@ class _DatetimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# ---------------------------------------------------------------------------
-# Prompt templates
-# ---------------------------------------------------------------------------
 
 _NORMALIZE_SYSTEM = (
     "You are a classification analyst. Your job is to read descriptive information "
-    "about a company and identify which of the provided canonical values apply to the "
+    "about a company and identify which of the provided values apply to the "
     "company for a particular metadata property. Base your selections solely on the "
-    "human-readable descriptions provided for each value."
+    "human-readable descriptions provided for each value, and coerce existing values to "
+    "the closest matching option(s) from the provided list."
 )
 
 _NORMALIZE_USER = """\
@@ -110,7 +100,6 @@ Examples of valid responses:
 Do NOT include any explanation or surrounding text — only the JSON array.
 """
 
-# Fallback website-agent prompt (used when domain-services is not installed).
 _WEBSITE_AGENT_SYSTEM = (
     "You are a research assistant. Your sole task is to identify the official website "
     "URL for a company based on the information provided."
@@ -159,26 +148,8 @@ Do NOT include any explanation or surrounding text — only the JSON object.
 """
 
 
-# ---------------------------------------------------------------------------
-# Result type
-# ---------------------------------------------------------------------------
-
-
 class SanitizeResult:
-    """Result of sanitizing a single company markdown file.
-
-    Attributes
-    ----------
-    file_path:
-        Absolute path to the processed file.
-    changes:
-        Mapping of field name to the new value written (or that *would* be
-        written in dry-run mode).
-    error:
-        Error message if the file could not be processed; *None* on success.
-    success:
-        ``True`` when no unhandled error occurred.
-    """
+    """Result of sanitizing a single company markdown file."""
 
     __slots__ = ("file_path", "changes", "error", "success")
 
@@ -201,52 +172,20 @@ class SanitizeResult:
         )
 
 
-# ---------------------------------------------------------------------------
-# Main sanitizer
-# ---------------------------------------------------------------------------
-
-
 class CompanySanitizer:
     """Walk company markdown files and sanitize their metadata using LLM calls.
 
-    The sanitizer performs three passes over each file:
-
-    1. **Metadata normalisation** – maps each field defined in
-       *attributes_catalog* to canonical ontology values.
-    2. **Website identification** – populates a missing ``website`` field.
-    3. **NAICS classification** – assigns the company a NAICS code.
-
-    Parameters
-    ----------
-    kb_root:
-        Root directory of the markdown Knowledge Base. If ``None``, the value
-        is loaded from ``config.yaml`` via
-        ``get_config().knowledge_base.path``.
-    llm_client:
-        An :class:`~data_platform.actions.llm_client.LLMClient` instance used
-        for all LLM calls.
-    attributes_catalog:
-        :class:`~data_platform.ontology_adapter.AttributesCatalog` describing
-        the metadata properties and their allowed values.
-    naics_catalog:
-        :class:`~data_platform.ontology_adapter.NaicsCatalog` containing the
-        full NAICS hierarchy.
-    companies_folder:
-        Sub-folder name for company documents (default: ``"companies"``).
-    dry_run:
-        When ``True``, compute what changes *would* be made but do not write
-        anything to disk.
-    body_text_limit:
-        Maximum number of characters of the markdown body sent to the LLM.
-        Longer bodies are truncated to reduce token usage.
+    Catalogs are loaded from the documented ``ontology.registry`` API via the
+    adapter when not explicitly provided. Positional catalog arguments are still
+    accepted for backward compatibility and for unit tests.
     """
 
     def __init__(
         self,
         kb_root: Path | str | None,
         llm_client: LLMClient,
-        attributes_catalog: AttributesCatalog,
-        naics_catalog: NaicsCatalog,
+        attributes_catalog: AttributesCatalog | None = None,
+        naics_catalog: NaicsCatalog | None = None,
         *,
         companies_folder: str = "companies",
         dry_run: bool = False,
@@ -260,23 +199,17 @@ class CompanySanitizer:
 
         self._kb_root = resolved_kb_root
         self._llm = llm_client
-        self._attributes = attributes_catalog
-        self._naics = naics_catalog
+        self._attributes = attributes_catalog or get_attributes_catalog()
+        self._naics = naics_catalog or get_naics_catalog()
         self._dry_run = dry_run
         self._body_text_limit = body_text_limit
-
         self._reader = KnowledgeBaseReader(
             resolved_kb_root,
             folder_map={"company": companies_folder},
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _format_changes(doc: ParsedDocument, changes: dict[str, Any]) -> str:
-        """Format field changes as 'field: old_value -> new_value' for logging."""
         formatted = []
         for field, new_value in changes.items():
             old_value = doc.metadata.get(field, "<not set>")
@@ -284,21 +217,6 @@ class CompanySanitizer:
         return "; ".join(formatted)
 
     def sanitize_all(self, limit: int | None = None) -> list[SanitizeResult]:
-        """Sanitize company markdown files in the Knowledge Base.
-
-        Parameters
-        ----------
-        limit:
-            When provided, process at most *limit* files.  Useful for a
-            quick test-run on a subset of the Knowledge Base before committing
-            to the full sanitization.  When ``None`` (the default), all files
-            are processed.
-
-        Returns
-        -------
-        list[SanitizeResult]
-            One result per company file processed.
-        """
         files = self._reader.list_files(object_type="company")
         if limit is not None:
             files = files[:limit]
@@ -310,28 +228,15 @@ class CompanySanitizer:
         )
         results: list[SanitizeResult] = []
         for file_path in files:
-            result = self.sanitize_file(file_path)
-            results.append(result)
+            results.append(self.sanitize_file(file_path))
         logger.info(
             "Sanitization complete: %d succeeded, %d failed",
-            sum(1 for r in results if r.success),
-            sum(1 for r in results if not r.success),
+            sum(1 for result in results if result.success),
+            sum(1 for result in results if not result.success),
         )
         return results
 
     def sanitize_file(self, file_path: Path | str) -> SanitizeResult:
-        """Sanitize a single company markdown file.
-
-        Parameters
-        ----------
-        file_path:
-            Path to the ``.md`` file to process.
-
-        Returns
-        -------
-        SanitizeResult
-            Contains the fields changed and any error that occurred.
-        """
         file_path = Path(file_path)
         logger.info("Sanitizing %s", file_path.name)
 
@@ -343,19 +248,16 @@ class CompanySanitizer:
 
         changes: dict[str, Any] = {}
 
-        # 1. Normalize metadata against the properties catalog.
         try:
             changes.update(self._normalize_properties(doc))
         except Exception as exc:  # noqa: BLE001
             logger.error("Property normalization failed for %s: %s", file_path.name, exc)
 
-        # 2. Ensure the website field is populated.
         try:
             changes.update(self._ensure_website(doc))
         except Exception as exc:  # noqa: BLE001
             logger.error("Website identification failed for %s: %s", file_path.name, exc)
 
-        # 3. Classify via NAICS.
         try:
             changes.update(self._classify_naics(doc))
         except Exception as exc:  # noqa: BLE001
@@ -364,11 +266,7 @@ class CompanySanitizer:
         if changes:
             formatted_changes = self._format_changes(doc, changes)
             if self._dry_run:
-                logger.info(
-                    "Dry run – would update %s: %s",
-                    file_path.name,
-                    formatted_changes,
-                )
+                logger.info("Dry run - would update %s: %s", file_path.name, formatted_changes)
             else:
                 self._write_metadata(file_path, {**doc.metadata, **changes})
                 logger.info("Updated %s: %s", file_path.name, formatted_changes)
@@ -377,17 +275,12 @@ class CompanySanitizer:
 
         return SanitizeResult(file_path, changes)
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
     def _normalize_properties(self, doc: ParsedDocument) -> dict[str, Any]:
-        """Run the metadata-normalization LLM pass."""
         changes: dict[str, Any] = {}
 
         for prop in self._attributes.properties:
             values_list = "\n".join(
-                f"  - {v.value}: {v.description}" for v in prop.values
+                f"  - {value.value}: {value.description}" for value in prop.values
             )
             accept_multiple = prop.accept_multiple_values
             multiple_instruction = (
@@ -411,42 +304,40 @@ class CompanySanitizer:
                 new_values = json.loads(raw.strip())
                 if not isinstance(new_values, list):
                     logger.warning(
-                        "Unexpected LLM response for field '%s' in %s – expected list, got %r",
-                        prop.field, doc.path.name, type(new_values).__name__,
+                        "Unexpected LLM response for field '%s' in %s - expected list, got %r",
+                        prop.field,
+                        doc.path.name,
+                        type(new_values).__name__,
                     )
                     continue
-
                 if not new_values:
-                    continue  # Empty list → no change.
-
-                if accept_multiple:
-                    changes[prop.field] = new_values
-                else:
-                    changes[prop.field] = new_values[0]
-
+                    continue
+                changes[prop.field] = new_values if accept_multiple else new_values[0]
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning(
                     "Could not parse LLM response for field '%s' in %s: %s",
-                    prop.field, doc.path.name, exc,
+                    prop.field,
+                    doc.path.name,
+                    exc,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "LLM call failed for field '%s' in %s: %s",
-                    prop.field, doc.path.name, exc,
+                    prop.field,
+                    doc.path.name,
+                    exc,
                 )
 
         return changes
 
     def _ensure_website(self, doc: ParsedDocument) -> dict[str, Any]:
-        """Populate the ``website`` field if it is absent or empty."""
         existing = doc.metadata.get("website")
         if existing and str(existing).strip():
             return {}
 
-        # Build focus context for the prompt.
         focus = doc.metadata.get("focus", [])
         if isinstance(focus, list):
-            focus_str = ", ".join(str(f) for f in focus)
+            focus_str = ", ".join(str(item) for item in focus)
         else:
             focus_str = str(focus)
         focus_context = (
@@ -455,14 +346,13 @@ class CompanySanitizer:
             else ""
         )
 
-        # Try to load the website-agent prompt from domain-services; fall back
-        # to the built-in stub prompt.
         try:
             from domain_services.agent_orchestration.prompts.janitor import (  # type: ignore[import-not-found]
-                website_agent as _wa,
+                website_agent as website_agent_prompt,
             )
-            system_prompt: str = getattr(_wa, "SYSTEM", _WEBSITE_AGENT_SYSTEM)
-            user_template: str = getattr(_wa, "USER", _WEBSITE_AGENT_USER)
+
+            system_prompt: str = getattr(website_agent_prompt, "SYSTEM", _WEBSITE_AGENT_SYSTEM)
+            user_template: str = getattr(website_agent_prompt, "USER", _WEBSITE_AGENT_USER)
         except ImportError:
             system_prompt = _WEBSITE_AGENT_SYSTEM
             user_template = _WEBSITE_AGENT_USER
@@ -475,20 +365,17 @@ class CompanySanitizer:
 
         try:
             raw = self._llm.chat(system=system_prompt, user=user_prompt)
-            url = raw.strip().strip("\"'")
+            url = raw.strip().strip('"\'')
             if url and url.lower() != "null" and url.startswith("http"):
                 return {"website": url}
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Website LLM call failed for %s: %s", doc.path.name, exc
-            )
+            logger.warning("Website LLM call failed for %s: %s", doc.path.name, exc)
 
         return {}
 
     def _classify_naics(self, doc: ParsedDocument) -> dict[str, Any]:
-        """Assign a NAICS code to the company."""
         sectors_summary = "\n".join(
-            f"  {s.code}: {s.title}" for s in self._naics.sectors
+            f"  {sector.code}: {sector.title}" for sector in self._naics.sectors
         )
 
         user_prompt = _NAICS_USER.format(
@@ -503,21 +390,23 @@ class CompanySanitizer:
             if not isinstance(naics_data, dict):
                 logger.warning(
                     "Unexpected NAICS LLM response for %s: expected dict, got %r",
-                    doc.path.name, type(naics_data).__name__,
+                    doc.path.name,
+                    type(naics_data).__name__,
                 )
                 return {}
 
             result: dict[str, Any] = {}
-            for key in ("naics_code", "naics_title", "naics_sector_code", "naics_sector_title"):
+            for key in (
+                "naics_code",
+                "naics_title",
+                "naics_sector_code",
+                "naics_sector_title",
+            ):
                 if key in naics_data:
                     result[key] = naics_data[key]
             return result
-
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning(
-                "Could not parse NAICS LLM response for %s: %s",
-                doc.path.name, exc,
-            )
+            logger.warning("Could not parse NAICS LLM response for %s: %s", doc.path.name, exc)
         except Exception as exc:  # noqa: BLE001
             logger.warning("NAICS LLM call failed for %s: %s", doc.path.name, exc)
 
@@ -525,10 +414,6 @@ class CompanySanitizer:
 
     @staticmethod
     def _write_metadata(file_path: Path, metadata: dict[str, Any]) -> None:
-        """Overwrite the front-matter of *file_path* with *metadata*.
-
-        The markdown body is preserved unchanged.
-        """
         post = frontmatter.load(str(file_path))
         for key, value in metadata.items():
             post.metadata[key] = value

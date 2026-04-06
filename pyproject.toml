@@ -15,7 +15,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "sqlalchemy>=2.0",
     "openai>=1.0",
-    "ontology-core @ git+https://github.com/rounder22/ontology-core.git",
+    "ontology-core @ git+https://github.com/rounder22/ontology-core.git@v0.2.0",
 ]
 
 [project.optional-dependencies]

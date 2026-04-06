@@ -1,35 +1,15 @@
-"""
-Ontology adapter – single import point for canonical models and templates.
+"""Ontology adapter for optional ontology-core integration.
 
-The current ``ontology-core`` package exposes modules under the ``ontology``
-namespace and includes entity and property-catalog tooling.
-
-This project keeps its existing in-memory canonical model contract for ETL and
-repository operations, while optionally importing property catalog classes from
-``ontology-core`` when available.
-
-If dependencies are unavailable, this module falls back to local stubs.
-
-Usage::
-
-    from data_platform.ontology_adapter import Company, Person, Property, TemplateLibrary
-
-    person = Person(name="Alice", email="alice@example.com")
-
-    # ``Project`` is a backward-compatible alias for ``Property``.
-    from data_platform.ontology_adapter import Project  # noqa: F401
-
-Catalog types::
-
-    from data_platform.ontology_adapter import (
-        AttributesCatalog,
-        NaicsCatalog,
-        DEFAULT_ATTRIBUTES_CATALOG,
-        DEFAULT_NAICS_CATALOG,
-    )
+This module provides a stable import surface for the rest of the project.
+When ``ontology-core`` is available, entity classes are imported from it and
+catalog data is loaded through the documented ``ontology.registry`` API.
+When it is unavailable, local stub implementations are used instead.
 """
 
 from __future__ import annotations
+
+from functools import lru_cache
+from typing import Any
 
 from data_platform._stubs.catalogs import (
     DEFAULT_ATTRIBUTES_CATALOG,
@@ -41,12 +21,40 @@ from data_platform._stubs.catalogs import (
     NaicsEntry,
 )
 from data_platform._stubs.ontology_stubs import (
-    Company,
-    Person,
-    Project,
-    Property,
+    Company as _StubCompany,
+    Person as _StubPerson,
+    Project as _StubProject,
+    Property as _StubProperty,
     TemplateLibrary,
 )
+
+Company = _StubCompany
+Person = _StubPerson
+Project = _StubProject
+Property = _StubProperty
+
+try:
+    from ontology.registry import (  # type: ignore[import-not-found]
+        get_catalog as ontology_get_catalog,
+        get_catalog_version,
+        list_catalogs,
+    )
+
+    ONTOLOGY_CORE_AVAILABLE = True
+except ImportError:
+    ontology_get_catalog = None  # type: ignore[assignment]
+    get_catalog_version = None  # type: ignore[assignment]
+    list_catalogs = None  # type: ignore[assignment]
+    ONTOLOGY_CORE_AVAILABLE = False
+
+try:
+    from ontology.entities.company import Company  # type: ignore[import-not-found,no-redef]
+    from ontology.entities.person import Person  # type: ignore[import-not-found,no-redef]
+    from ontology.entities.property import Property  # type: ignore[import-not-found,no-redef]
+
+    Project = Property  # type: ignore[misc]
+except ImportError:
+    pass
 
 try:
     from ontology.properties.collector import PropertyCollector  # type: ignore[import-not-found]
@@ -54,31 +62,80 @@ try:
         PropertyCatalog,
         PropertyValue,
     )
-
-    ONTOLOGY_CORE_AVAILABLE = True
 except ImportError:
     PropertyCatalog = None  # type: ignore[assignment]
     PropertyCollector = None  # type: ignore[assignment]
     PropertyValue = None  # type: ignore[assignment]
-    ONTOLOGY_CORE_AVAILABLE = False
 
-# Attempt to override entity and catalog implementations with ontology-core
-# versions when available.
-try:
-    from ontology.entities.property import Property  # type: ignore[import-not-found,no-redef]
+_PROPERTY_DESCRIPTIONS = {
+    "firm_type": "The type of investment firm or fund structure.",
+    "focus": "Primary investment focus areas, sectors, or themes.",
+}
 
-    #: Keep ``Project`` in sync with the overridden ``Property`` from ontology-core.
-    Project = Property  # type: ignore[misc]
-except ImportError:
-    pass  # Already imported from stubs above.
+_MULTI_VALUE_FIELDS = {"focus"}
 
-try:
-    from ontology.catalogs.attributes import (
-        AttributesCatalog,  # type: ignore[import-not-found,no-redef]
-    )
-    from ontology.catalogs.naics import NaicsCatalog  # type: ignore[import-not-found,no-redef]
-except ImportError:
-    pass  # Already imported from stubs above.
+
+def _build_attributes_catalog(raw_catalog: dict[str, Any]) -> AttributesCatalog:
+    properties: list[CatalogProperty] = []
+    for field, raw_values in raw_catalog.items():
+        if field.startswith("$"):
+            continue
+        if not isinstance(raw_values, list):
+            continue
+        values = [CatalogPropertyValue.model_validate(value) for value in raw_values]
+        properties.append(
+            CatalogProperty(
+                field=field,
+                description=_PROPERTY_DESCRIPTIONS.get(field, field.replace("_", " ").title()),
+                accept_multiple_values=field in _MULTI_VALUE_FIELDS,
+                values=values,
+            )
+        )
+    return AttributesCatalog(properties=properties)
+
+
+def _build_naics_catalog(raw_catalog: dict[str, Any]) -> NaicsCatalog:
+    sectors = [
+        NaicsEntry.model_validate(entry)
+        for entry in raw_catalog.get("naics_sectors", [])
+        if isinstance(entry, dict)
+    ]
+    return NaicsCatalog(sectors=sectors)
+
+
+def get_catalog(name: str, version: str | None = None) -> dict[str, Any]:
+    """Return a raw ontology catalog dictionary."""
+    if ontology_get_catalog is None:
+        raise RuntimeError("ontology-core is not available")
+    return ontology_get_catalog(name, version)
+
+
+@lru_cache(maxsize=1)
+def get_attributes_catalog() -> AttributesCatalog:
+    """Return the canonical attributes catalog as local model objects."""
+    if ontology_get_catalog is None:
+        return DEFAULT_ATTRIBUTES_CATALOG
+    try:
+        return _build_attributes_catalog(ontology_get_catalog("attributes"))
+    except (FileNotFoundError, KeyError, TypeError, ValueError):
+        return DEFAULT_ATTRIBUTES_CATALOG
+
+
+@lru_cache(maxsize=1)
+def get_naics_catalog() -> NaicsCatalog:
+    """Return the canonical NAICS catalog as local model objects."""
+    if ontology_get_catalog is None:
+        return DEFAULT_NAICS_CATALOG
+    try:
+        return _build_naics_catalog(ontology_get_catalog("naics"))
+    except (FileNotFoundError, KeyError, TypeError, ValueError):
+        return DEFAULT_NAICS_CATALOG
+
+
+def get_catalogs() -> tuple[AttributesCatalog, NaicsCatalog]:
+    """Return both supported catalogs as local model objects."""
+    return get_attributes_catalog(), get_naics_catalog()
+
 
 __all__ = [
     "AttributesCatalog",
@@ -97,4 +154,10 @@ __all__ = [
     "Project",
     "Property",
     "TemplateLibrary",
+    "get_attributes_catalog",
+    "get_catalog",
+    "get_catalog_version",
+    "get_catalogs",
+    "get_naics_catalog",
+    "list_catalogs",
 ]
