@@ -72,22 +72,74 @@ _PROPERTY_DESCRIPTIONS = {
     "focus": "Primary investment focus areas, sectors, or themes.",
 }
 
-_MULTI_VALUE_FIELDS = {"focus"}
+_MULTI_VALUE_FIELDS = {"firm_type", "focus"}
 
 
 def _build_attributes_catalog(raw_catalog: dict[str, Any]) -> AttributesCatalog:
+    # Some registries return an explicit list of property objects.
+    # Example:
+    #   {"properties": [{"field": "firm_type", "accept_multiple_values": true,
+    #                    "values": [...]}, ...]}
+    raw_properties = raw_catalog.get("properties")
+    if isinstance(raw_properties, list):
+        properties: list[CatalogProperty] = []
+        for raw_property in raw_properties:
+            if not isinstance(raw_property, dict):
+                continue
+            try:
+                properties.append(CatalogProperty.model_validate(raw_property))
+            except ValueError:
+                continue
+        if properties:
+            return AttributesCatalog(properties=properties)
+
     properties: list[CatalogProperty] = []
-    for field, raw_values in raw_catalog.items():
+    for field, raw_definition in raw_catalog.items():
         if field.startswith("$"):
             continue
+        if field == "properties":
+            continue
+
+        description = _PROPERTY_DESCRIPTIONS.get(field, field.replace("_", " ").title())
+        accept_multiple_values = field in _MULTI_VALUE_FIELDS
+        raw_values: Any
+
+        # Support both legacy format:
+        #   "field": [{"value": "...", "description": "..."}, ...]
+        # and rich format:
+        #   "field": {
+        #       "description": "...",
+        #       "accept_multiple_values": true,
+        #       "values": [{...}, ...]
+        #   }
+        if isinstance(raw_definition, list):
+            raw_values = raw_definition
+        elif isinstance(raw_definition, dict):
+            raw_values = raw_definition.get("values", [])
+            description = raw_definition.get("description") or description
+            accept_multiple_values = bool(
+                raw_definition.get("accept_multiple_values", accept_multiple_values)
+            )
+        else:
+            continue
+
         if not isinstance(raw_values, list):
             continue
-        values = [CatalogPropertyValue.model_validate(value) for value in raw_values]
+
+        values: list[CatalogPropertyValue] = []
+        for value in raw_values:
+            try:
+                values.append(CatalogPropertyValue.model_validate(value))
+            except ValueError:
+                continue
+        if not values:
+            continue
+
         properties.append(
             CatalogProperty(
                 field=field,
-                description=_PROPERTY_DESCRIPTIONS.get(field, field.replace("_", " ").title()),
-                accept_multiple_values=field in _MULTI_VALUE_FIELDS,
+                description=description,
+                accept_multiple_values=accept_multiple_values,
                 values=values,
             )
         )

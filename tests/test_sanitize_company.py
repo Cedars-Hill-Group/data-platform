@@ -619,6 +619,62 @@ class TestConfigKbRoot:
             reset_config_cache()
 
 
+class TestRawOntologyCatalogInputs:
+    def test_accepts_raw_registry_dict_catalogs(
+        self,
+        kb_root: Path,
+        simple_company: Path,
+    ):
+        raw_attributes = {
+            "firm_type": [
+                {"value": "private_equity", "description": "PE firm."},
+                {"value": "venture_capital", "description": "VC firm."},
+            ],
+            "focus": {
+                "description": "Investment focus areas.",
+                "accept_multiple_values": True,
+                "values": [
+                    {"value": "technology", "description": "Tech sector."},
+                    {"value": "healthcare", "description": "Healthcare sector."},
+                ],
+            },
+        }
+        raw_naics = {
+            "naics_sectors": [
+                {"code": "52", "title": "Finance and Insurance"},
+                {"code": "51", "title": "Information"},
+            ]
+        }
+
+        llm = _make_llm([
+            '["private_equity"]',
+            '["technology"]',
+            "https://acme.example.com",
+            json.dumps(
+                {
+                    "naics_sector_code": "52",
+                    "naics_sector_title": "Finance and Insurance",
+                    "naics_code": "5231",
+                    "naics_title": "Securities and Commodity Contracts",
+                }
+            ),
+        ])
+
+        sanitizer = CompanySanitizer(
+            kb_root,
+            llm,
+            raw_attributes,
+            raw_naics,
+            dry_run=True,
+        )
+        result = sanitizer.sanitize_file(simple_company)
+
+        assert result.success is True
+        assert result.changes["firm_type"] == "private_equity"
+        assert result.changes["focus"] == ["technology"]
+        assert result.changes["naics_code"] == "5231"
+
+
 # ---------------------------------------------------------------------------
 # Default catalog stubs
 # ---------------------------------------------------------------------------

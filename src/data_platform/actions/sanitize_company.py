@@ -44,7 +44,10 @@ from data_platform.knowledge_base.reader import KnowledgeBaseReader, ParsedDocum
 from data_platform.log import get_logger
 from data_platform.ontology_adapter import (
     AttributesCatalog,
+    CatalogProperty,
+    CatalogPropertyValue,
     NaicsCatalog,
+    NaicsEntry,
     get_attributes_catalog,
     get_naics_catalog,
 )
@@ -71,7 +74,9 @@ _NORMALIZE_SYSTEM = (
     "about a company and identify which of the provided values apply to the "
     "company for a particular metadata property. Base your selections solely on the "
     "human-readable descriptions provided for each value, and coerce existing values to "
-    "the closest matching option(s) from the provided list."
+    "the closest matching option(s) from the provided list. Do not reduce the number of "
+    "existing metadata values. You must identify at least the same number of values as currently exist "
+    "in the metadata for that property, even if that means selecting multiple values with similar descriptions. "
 )
 
 _NORMALIZE_USER = """\
@@ -184,8 +189,8 @@ class CompanySanitizer:
         self,
         kb_root: Path | str | None,
         llm_client: LLMClient,
-        attributes_catalog: AttributesCatalog | None = None,
-        naics_catalog: NaicsCatalog | None = None,
+        attributes_catalog: AttributesCatalog | dict[str, Any] | None = None,
+        naics_catalog: NaicsCatalog | dict[str, Any] | None = None,
         *,
         companies_folder: str = "companies",
         dry_run: bool = False,
@@ -199,14 +204,134 @@ class CompanySanitizer:
 
         self._kb_root = resolved_kb_root
         self._llm = llm_client
-        self._attributes = attributes_catalog or get_attributes_catalog()
-        self._naics = naics_catalog or get_naics_catalog()
+        self._attributes = self._coerce_attributes_catalog(attributes_catalog)
+        self._naics = self._coerce_naics_catalog(naics_catalog)
         self._dry_run = dry_run
         self._body_text_limit = body_text_limit
         self._reader = KnowledgeBaseReader(
             resolved_kb_root,
             folder_map={"company": companies_folder},
         )
+
+    @staticmethod
+    def _coerce_attributes_catalog(
+        catalog: AttributesCatalog | dict[str, Any] | None,
+    ) -> AttributesCatalog:
+        if catalog is None:
+            return get_attributes_catalog()
+        if isinstance(catalog, AttributesCatalog):
+            return catalog
+        if not isinstance(catalog, dict):
+            logger.warning(
+                "Unsupported attributes catalog type %r; falling back to default catalog",
+                type(catalog).__name__,
+            )
+            return get_attributes_catalog()
+
+        if "properties" in catalog:
+            try:
+                return AttributesCatalog.model_validate(catalog)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Invalid 'properties' attributes catalog payload; attempting raw-map fallback"
+                )
+
+        properties: list[CatalogProperty] = []
+        for field, raw_definition in catalog.items():
+            if not isinstance(field, str) or field.startswith("$"):
+                continue
+
+            description = field.replace("_", " ").title()
+            accept_multiple_values = field == "focus"
+
+            if isinstance(raw_definition, list):
+                raw_values: Any = raw_definition
+            elif isinstance(raw_definition, dict):
+                raw_values = raw_definition.get("values", [])
+                description = str(raw_definition.get("description") or description)
+                accept_multiple_values = bool(
+                    raw_definition.get("accept_multiple_values", accept_multiple_values)
+                )
+            else:
+                continue
+
+            if not isinstance(raw_values, list):
+                continue
+
+            values: list[CatalogPropertyValue] = []
+            for raw_value in raw_values:
+                if isinstance(raw_value, dict):
+                    try:
+                        values.append(CatalogPropertyValue.model_validate(raw_value))
+                    except Exception:  # noqa: BLE001
+                        continue
+                elif isinstance(raw_value, str):
+                    values.append(
+                        CatalogPropertyValue(
+                            value=raw_value,
+                            description=raw_value,
+                        )
+                    )
+
+            if not values:
+                continue
+
+            properties.append(
+                CatalogProperty(
+                    field=field,
+                    description=description,
+                    accept_multiple_values=accept_multiple_values,
+                    values=values,
+                )
+            )
+
+        if not properties:
+            logger.warning(
+                "No valid properties found in provided attributes catalog; using default catalog"
+            )
+            return get_attributes_catalog()
+
+        return AttributesCatalog(properties=properties)
+
+    @staticmethod
+    def _coerce_naics_catalog(catalog: NaicsCatalog | dict[str, Any] | None) -> NaicsCatalog:
+        if catalog is None:
+            return get_naics_catalog()
+        if isinstance(catalog, NaicsCatalog):
+            return catalog
+        if not isinstance(catalog, dict):
+            logger.warning(
+                "Unsupported NAICS catalog type %r; falling back to default catalog",
+                type(catalog).__name__,
+            )
+            return get_naics_catalog()
+
+        if "sectors" in catalog:
+            try:
+                return NaicsCatalog.model_validate(catalog)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Invalid 'sectors' NAICS catalog payload; attempting raw-map fallback"
+                )
+
+        raw_sectors = catalog.get("naics_sectors", [])
+        sectors: list[NaicsEntry] = []
+        if isinstance(raw_sectors, list):
+            for entry in raw_sectors:
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    sectors.append(NaicsEntry.model_validate(entry))
+                except Exception:  # noqa: BLE001
+                    continue
+
+        if not sectors:
+            logger.warning(
+                "No valid sectors found in provided NAICS catalog; using default catalog"
+            )
+            return get_naics_catalog()
+
+        return NaicsCatalog(sectors=sectors)
 
     @staticmethod
     def _format_changes(doc: ParsedDocument, changes: dict[str, Any]) -> str:
