@@ -7,7 +7,7 @@ The data platform layer of the CHG Operating System provides data access, normal
 | Layer | Role |
 |---|---|
 | **Connectors** | Adapters to relational databases, cloud data warehouses, and object storage |
-| **Repositories** | CRUD interfaces for canonical ontology objects (People, Companies, Projects) |
+| **Repositories** | CRUD interfaces for canonical ontology objects (People, Companies, Properties) |
 | **ETL / ELT** | Pipelines that read raw sources (markdown KB, APIs) → canonical objects |
 | **Data Quality** | Composable checks and lineage metadata tracking |
 | **Knowledge Base** | Markdown file reader / writer backed by `ontology-core` templates |
@@ -62,7 +62,7 @@ The KB root directory must contain sub-folders for each object type:
     companies/
         acme-corp.md
     Properties/
-        project-alpha.md
+        property-alpha.md
 ```
 
 Each file uses YAML front-matter followed by free-form markdown content.
@@ -95,7 +95,7 @@ tags: [saas, b2b]
 Acme Corp builds enterprise software solutions.
 ```
 
-**Project file** (`Properties/project-alpha.md`):
+**Property file** (`Properties/property-alpha.md`):
 ```markdown
 ---
 id: proj-001
@@ -573,6 +573,10 @@ path = writer.create("person", name="Carol White", email="carol@example.com", ro
 path = writer.create("company", name="Beta Ltd", industry="Finance", website="https://beta.example.com")
 # → <kb_root>/companies/beta-ltd.md
 
+# The canonical object type is "property"; "project" still works as a legacy alias.
+path = writer.create("property", name="Project Beta", status="planning", owner="carol@example.com")
+# → <kb_root>/Properties/project-beta.md
+
 path = writer.create("project", name="Project Beta", status="planning", owner="carol@example.com")
 # → <kb_root>/Properties/project-beta.md
 
@@ -798,16 +802,28 @@ All three models accept extra fields (stored in `metadata`) and are fully Pydant
 
 ## `ontology-core` Integration
 
-`data_platform.ontology_adapter` is a thin shim that imports canonical models and tooling from `ontology-core` when available, falling back to local stubs otherwise. This means the library works in any environment without requiring the internal package.
+`data_platform.ontology_adapter` is a thin shim that imports canonical entity models from `ontology-core` when available and loads catalog data through the documented `ontology.registry` API. When `ontology-core` is unavailable, it falls back to local stubs. This means the library works in any environment without requiring the internal package.
 
 ```python
-from data_platform.ontology_adapter import ONTOLOGY_CORE_AVAILABLE
+from data_platform.ontology_adapter import (
+    ONTOLOGY_CORE_AVAILABLE,
+    get_attributes_catalog,
+    get_naics_catalog,
+)
 
 if ONTOLOGY_CORE_AVAILABLE:
     print("Using ontology-core models")
 else:
     print("Using local stubs")
+
+attributes = get_attributes_catalog()
+naics = get_naics_catalog()
+
+print(attributes.get_property("firm_type"))
+print(naics.get_sector("51"))
 ```
+
+Under the hood, the adapter translates the dictionaries returned by `ontology.registry.get_catalog(...)` into this project's local `AttributesCatalog` and `NaicsCatalog` models.
 
 > **Note:** `ontology-core` is an internal CHG OS package. Do not add it to public PyPI dependencies. The fallback stubs are fully functional for development, testing, and standalone deployments.
 
@@ -822,7 +838,8 @@ src/data_platform/
 ├── log.py                      # Central logging (configure_logging / get_logger)
 ├── ontology_adapter.py         # Import shim for ontology-core (with stub fallback)
 ├── _stubs/
-│   └── ontology_stubs.py       # Stub Person, Company, Project, TemplateLibrary
+│   ├── ontology_stubs.py       # Stub Person, Company, Property, TemplateLibrary
+│   └── catalogs.py             # Stub catalog models and defaults
 ├── connectors/
 │   ├── base.py                 # Abstract BaseConnector
 │   ├── database.py             # SQLAlchemy relational DB connector

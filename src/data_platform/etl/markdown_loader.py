@@ -69,6 +69,8 @@ class MarkdownETLPipeline(ETLPipeline):
     _TRANSFORMERS = {
         "person": PersonTransformer(),
         "company": CompanyTransformer(),
+        "property": ProjectTransformer(),
+        # "project" kept as a backward-compatible alias.
         "project": ProjectTransformer(),
     }
 
