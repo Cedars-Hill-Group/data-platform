@@ -235,10 +235,10 @@ class TestNormalizePersonName:
         assert normalize_person_name("Madonna") == "madonna"
 
     def test_two_initials_not_dropped_for_first_name(self):
-        # "J. Smith" – first token is a single char but we still keep it
-        # because dropping it would leave only "smith"
+        # "J. Smith" has only 2 tokens after normalization – both are kept
+        # so that we never reduce a two-part name to a single token.
         result = normalize_person_name("J. Smith")
-        assert "smith" in result
+        assert result == "j smith"
 
 
 class TestNormalizeWebsiteDomain:

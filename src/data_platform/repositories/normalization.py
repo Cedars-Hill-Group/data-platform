@@ -90,7 +90,10 @@ def normalize_person_name(name: str) -> str:
     """Return a normalized form of a person name for exact-match lookups.
 
     Middle initials (single-character tokens, with or without a trailing
-    period) are dropped when the name has more than one token.
+    period) are dropped only when the name has **three or more** tokens.
+    This ensures that two-token names (e.g. ``"J. Smith"`` or ``"Bo Smith"``)
+    are never reduced to a single token, which would produce misleadingly
+    broad matches.
 
     Examples
     --------
@@ -103,7 +106,7 @@ def normalize_person_name(name: str) -> str:
     """
     name = _normalize_base(name.strip())
     parts = name.split()
-    if len(parts) > 1:
+    if len(parts) > 2:
         parts = [p for p in parts if len(p) > 1]
     return " ".join(parts)
 

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from data_platform.log import get_logger
 from data_platform.ontology_adapter import Person
 from data_platform.repositories.base import BaseRepository
 from data_platform.repositories.normalization import normalize_person_name
+
+logger = get_logger(__name__)
 
 
 class PeopleRepository(BaseRepository[Person]):
@@ -199,11 +202,27 @@ class PeopleRepository(BaseRepository[Person]):
 
         if person.email:
             email_lower = person.email.lower()
+            if email_lower in self._email_index and self._email_index[email_lower] != oid:
+                logger.warning(
+                    "Person email collision: email %r already maps to id %r; "
+                    "overwriting with id %r",
+                    email_lower,
+                    self._email_index[email_lower],
+                    oid,
+                )
             self._email_index[email_lower] = oid
             self._email_keys[oid] = email_lower
 
         norm_name = normalize_person_name(person.name)
         if norm_name:
+            if norm_name in self._name_index and self._name_index[norm_name] != oid:
+                logger.warning(
+                    "Person name collision: normalized form %r already maps to id %r; "
+                    "overwriting with id %r",
+                    norm_name,
+                    self._name_index[norm_name],
+                    oid,
+                )
             self._name_index[norm_name] = oid
             self._name_keys[oid] = norm_name
 

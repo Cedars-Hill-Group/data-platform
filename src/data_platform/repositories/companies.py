@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from data_platform.log import get_logger
 from data_platform.ontology_adapter import Company
 from data_platform.repositories.base import BaseRepository
 from data_platform.repositories.normalization import (
     normalize_company_name,
     normalize_website_domain,
 )
+
+logger = get_logger(__name__)
 
 
 class CompanyRepository(BaseRepository[Company]):
@@ -202,12 +205,28 @@ class CompanyRepository(BaseRepository[Company]):
 
         self._name_keys[oid] = names
         for norm in names:
+            if norm in self._name_index and self._name_index[norm] != oid:
+                logger.warning(
+                    "Company name collision: normalized form %r already maps to id %r; "
+                    "overwriting with id %r",
+                    norm,
+                    self._name_index[norm],
+                    oid,
+                )
             self._name_index[norm] = oid
 
         # Website domain index (at most one domain per company).
         if company.website:
             domain = normalize_website_domain(company.website)
             if domain:
+                if domain in self._domain_index and self._domain_index[domain] != oid:
+                    logger.warning(
+                        "Company domain collision: domain %r already maps to id %r; "
+                        "overwriting with id %r",
+                        domain,
+                        self._domain_index[domain],
+                        oid,
+                    )
                 self._domain_index[domain] = oid
                 self._domain_keys[oid] = domain
 
