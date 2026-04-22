@@ -178,6 +178,26 @@ class KnowledgeBaseWriter:
         logger.info("Updated %s file: %s", object_type, file_path)
         return file_path
 
+    def delete(self, file_path: Path | str) -> None:
+        """Delete a markdown file from the Knowledge Base.
+
+        Parameters
+        ----------
+        file_path:
+            Path to the markdown file to remove.
+
+        Raises
+        ------
+        FileNotFoundError
+            If *file_path* does not exist.
+        """
+        file_path = Path(file_path)
+        if not file_path.exists():
+            logger.error("Cannot delete – file not found: %s", file_path)
+            raise FileNotFoundError(f"File not found: {file_path}")
+        file_path.unlink()
+        logger.info("Deleted KB file: %s", file_path)
+
     def write_header_section(
         self,
         file_path: Path | str,
