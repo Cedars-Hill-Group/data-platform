@@ -1,4 +1,4 @@
-"""Tests for the Knowledge Base reader and writer."""
+"""Tests for the Knowledge Base reader, writer, and manager."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from data_platform.knowledge_base.manager import KnowledgeBaseManager
 from data_platform.knowledge_base.reader import KnowledgeBaseReader, ParsedDocument
 from data_platform.knowledge_base.writer import KnowledgeBaseWriter, _slugify
 from data_platform.ontology_adapter import TemplateLibrary
@@ -625,3 +626,209 @@ class TestKnowledgeBaseConfigFolderMap:
             "project": "initiatives",
         }
         reset_config_cache()
+
+
+class TestKnowledgeBaseWriterDelete:
+    def test_delete_existing_file(self, kb_root: Path):
+        writer = KnowledgeBaseWriter(kb_root)
+        alice = kb_root / "people" / "alice-smith.md"
+        assert alice.exists()
+        writer.delete(alice)
+        assert not alice.exists()
+
+    def test_delete_missing_file_raises(self, tmp_path: Path):
+        writer = KnowledgeBaseWriter(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            writer.delete(tmp_path / "ghost.md")
+
+
+class TestKnowledgeBaseManager:
+    def test_read_file(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        doc = manager.read_file(kb_root / "people" / "alice-smith.md")
+        assert isinstance(doc, ParsedDocument)
+        assert doc.object_type == "person"
+        assert doc.metadata["name"] == "Alice Smith"
+
+    def test_read_all(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        docs = manager.read_all()
+        assert len(docs) == 4
+
+    def test_read_all_filtered(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        people = manager.read_all(object_type="person")
+        assert len(people) == 2
+        assert all(d.object_type == "person" for d in people)
+
+    def test_list_files(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        paths = manager.list_files()
+        assert len(paths) == 4
+
+    def test_list_files_filtered(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        paths = manager.list_files(object_type="company")
+        assert len(paths) == 1
+
+    def test_select_header_content(self, kb_root: Path):
+        profile = kb_root / "people" / "mgr-test.md"
+        profile.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-mgr
+                name: Mgr Test
+                ---
+
+                # Skills
+                Python
+                """
+            )
+        )
+        manager = KnowledgeBaseManager(kb_root)
+        selected = manager.select_header_content(profile, ["Skills"])
+        assert selected == {"Skills": ["Python"]}
+
+    def test_create(self, tmp_path: Path):
+        manager = KnowledgeBaseManager(tmp_path)
+        path = manager.create("person", name="New Person", email="new@example.com")
+        assert path.exists()
+        assert "New Person" in path.read_text()
+
+    def test_create_raises_if_exists(self, tmp_path: Path):
+        manager = KnowledgeBaseManager(tmp_path)
+        manager.create("person", name="Dup")
+        with pytest.raises(FileExistsError):
+            manager.create("person", name="Dup")
+
+    def test_update(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        alice = kb_root / "people" / "alice-smith.md"
+        manager.update(alice, email="updated@example.com")
+        assert "updated@example.com" in alice.read_text()
+
+    def test_update_missing_raises(self, tmp_path: Path):
+        manager = KnowledgeBaseManager(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            manager.update(tmp_path / "ghost.md", name="Ghost")
+
+    def test_write_header_section(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        company = kb_root / "companies" / "acme-corp.md"
+        company.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: company-001
+                name: Acme Corp
+                ---
+
+                # Overview
+                Old text.
+                """
+            )
+        )
+        manager.write_header_section(company, "Overview", "New text.")
+        assert "New text." in company.read_text()
+        assert "Old text." not in company.read_text()
+
+    def test_write_header_sections(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        company = kb_root / "companies" / "acme-corp.md"
+        company.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: company-001
+                name: Acme Corp
+                ---
+
+                # Overview
+                Original overview.
+
+                # Notes
+                Original notes.
+                """
+            )
+        )
+        manager.write_header_sections(company, {"Overview": "Updated overview.", "Notes": "Updated notes."})
+        updated = company.read_text()
+        assert "Updated overview." in updated
+        assert "Updated notes." in updated
+        assert "Original overview." not in updated
+
+    def test_append_header_section(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        person = kb_root / "people" / "alice-smith.md"
+        person.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-001
+                name: Alice Smith
+                ---
+
+                # Notes
+                First note.
+                """
+            )
+        )
+        manager.append_header_section(person, "Notes", "Second note.")
+        updated = person.read_text()
+        assert "First note." in updated
+        assert "Second note." in updated
+
+    def test_append_header_sections(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        person = kb_root / "people" / "alice-smith.md"
+        person.write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: person-001
+                name: Alice Smith
+                ---
+
+                # Activity
+                Joined Q1.
+                """
+            )
+        )
+        manager.append_header_sections(person, {"Activity": "Promoted Q3."})
+        updated = person.read_text()
+        assert "Joined Q1." in updated
+        assert "Promoted Q3." in updated
+
+    def test_delete(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        alice = kb_root / "people" / "alice-smith.md"
+        assert alice.exists()
+        manager.delete(alice)
+        assert not alice.exists()
+
+    def test_delete_missing_raises(self, tmp_path: Path):
+        manager = KnowledgeBaseManager(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            manager.delete(tmp_path / "ghost.md")
+
+    def test_root_property(self, kb_root: Path):
+        manager = KnowledgeBaseManager(kb_root)
+        assert manager.root == kb_root
+
+    def test_custom_folder_map(self, custom_kb_root: Path):
+        manager = KnowledgeBaseManager(custom_kb_root, folder_map=_CUSTOM_FOLDER_MAP)
+        docs = manager.read_all()
+        assert len(docs) == 3
+
+    def test_create_and_delete_full_lifecycle(self, tmp_path: Path):
+        manager = KnowledgeBaseManager(tmp_path)
+        path = manager.create("company", name="Lifecycle Corp")
+        assert path.exists()
+        manager.update(path, industry="Technology")
+        manager.write_header_section(path, "Overview", "A technology company.")
+        doc = manager.read_file(path)
+        assert doc.metadata.get("industry") == "Technology"
+        assert doc.get_header_content("Overview") == ["A technology company."]
+        manager.delete(path)
+        assert not path.exists()

@@ -522,7 +522,52 @@ loader.load_projects([project1])
 
 ## Knowledge Base
 
-### Reading markdown files
+### Unified CRUD manager (recommended entry point)
+
+`KnowledgeBaseManager` is the recommended single entry point for downstream
+applications.  It combines all read, write, update, and delete operations in
+one object and logs every mutating operation automatically.
+
+```python
+from data_platform.knowledge_base import KnowledgeBaseManager
+
+manager = KnowledgeBaseManager(
+    cfg.knowledge_base.path,
+    folder_map=cfg.knowledge_base.folder_map,   # optional; uses defaults if omitted
+)
+
+# --- Read ---
+doc  = manager.read_file(Path("kb/people/alice-smith.md"))
+docs = manager.read_all()                        # → list[ParsedDocument]
+docs = manager.read_all(object_type="person")
+paths = manager.list_files(object_type="company")
+
+# Access parsed document fields
+doc.path          # pathlib.Path to the source file
+doc.object_type   # "person" | "company" | "property"
+doc.metadata      # dict parsed from YAML front-matter
+doc.content       # markdown body text (after the front-matter block)
+doc.headers       # ordered list of markdown header titles
+doc.header_sections   # mapping of header title → list of section bodies
+
+# Query specific sections
+sections = manager.select_header_content(path, ["Skills", "Notes"])
+
+# --- Create ---
+path = manager.create("person", name="Carol White", email="carol@example.com")
+
+# --- Update front-matter fields (merged into existing values) ---
+manager.update(path, role="Senior Analyst")
+
+# --- Targeted section edits ---
+manager.write_header_section(path, "Skills", "Python, SQL")         # replace
+manager.append_header_section(path, "Notes", "Joined Q4 2024.")     # append
+
+# --- Delete ---
+manager.delete(path)
+```
+
+### Reading markdown files (lower-level API)
 
 ```python
 from data_platform.knowledge_base.reader import KnowledgeBaseReader
@@ -588,6 +633,9 @@ path = writer.create("person", name="Carol White", overwrite=True)
 
 # Update an existing file (merges new fields with existing front-matter)
 writer.update(path, role="Senior Analyst", organization="Beta Ltd")
+
+# Delete a file
+writer.delete(path)
 ```
 
 ### Generating the property catalog (`properties.json`)
